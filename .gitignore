@@ -1,0 +1,23 @@
+# Build outputs
+/engines/target/
+/bin/
+/dist/
+node_modules/
+apps/*/dist/
+packages/*/dist/
+*.tsbuildinfo
+coverage/
+*.out
+*.test
+
+# Local runtime state
+/.data/
+/.usie/
+.env
+.env.local
+*.log
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

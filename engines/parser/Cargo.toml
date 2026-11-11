@@ -1,0 +1,17 @@
+[package]
+name = "usie-parser"
+description = "USIE universal parsing engine: tree-sitter language adapters producing normalized IR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+usie-ir.workspace = true
+serde_json.workspace = true
+tree-sitter.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-javascript.workspace = true
+tree-sitter-typescript.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

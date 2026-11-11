@@ -1,0 +1,18 @@
+[package]
+name = "usie-engine"
+description = "USIE analysis engine process: NDJSON parse and resolve commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "usie-engine"
+path = "src/main.rs"
+
+[dependencies]
+usie-ir.workspace = true
+usie-parser.workspace = true
+usie-semantic.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rayon.workspace = true

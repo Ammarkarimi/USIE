@@ -1,0 +1,14 @@
+[package]
+name = "usie-semantic"
+description = "USIE semantic engine: cross-file symbol resolution and relationship extraction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+usie-ir.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+usie-parser.workspace = true
