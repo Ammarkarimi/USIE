@@ -1,0 +1,195 @@
+package ingestion
+
+import (
+	"bytes"
+	"path"
+	"strings"
+	"unicode/utf8"
+)
+
+// File categories.
+const (
+	CategorySource = "source"
+	CategoryTest   = "test"
+	CategoryConfig = "config"
+	CategoryDocs   = "documentation"
+	CategoryBuild  = "build"
+	CategoryData   = "data"
+	CategoryAsset  = "asset"
+	CategoryBinary = "binary"
+)
+
+var vendoredDirs = map[string]bool{
+	"node_modules": true, "vendor": true, "third_party": true, "third-party": true, "bower_components": true,
+	".venv": true, "venv": true, "site-packages": true, "Pods": true, ".yarn": true,
+}
+
+var testDirs = map[string]bool{"test": true, "tests": true, "__tests__": true, "spec": true, "specs": true, "testdata": true, "e2e": true, "__mocks__": true}
+
+var docDirs = map[string]bool{"docs": true, "doc": true, "documentation": true}
+
+var buildFiles = map[string]bool{
+	"makefile": true, "gnumakefile": true, "cmakelists.txt": true, "dockerfile": true, "docker-compose.yml": true,
+	"docker-compose.yaml": true, "compose.yaml": true, "compose.yml": true, "build.gradle": true, "build.gradle.kts": true,
+	"settings.gradle": true, "settings.gradle.kts": true, "pom.xml": true, "package.json": true, "cargo.toml": true,
+	"go.mod": true, "pyproject.toml": true, "setup.py": true, "setup.cfg": true, "requirements.txt": true,
+	"jenkinsfile": true, "build.bazel": true, "workspace": true, "meson.build": true, "justfile": true, "tox.ini": true,
+}
+
+var lockFiles = map[string]bool{
+	"package-lock.json": true, "pnpm-lock.yaml": true, "yarn.lock": true, "cargo.lock": true, "poetry.lock": true,
+	"go.sum": true, "composer.lock": true, "gemfile.lock": true, "uv.lock": true, "pipfile.lock": true, "bun.lockb": true,
+}
+
+var assetExts = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".svg": true, ".ico": true, ".webp": true, ".bmp": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".otf": true, ".eot": true, ".mp3": true, ".mp4": true, ".wav": true,
+	".webm": true, ".pdf": true,
+}
+
+var dataExts = map[string]bool{".csv": true, ".tsv": true, ".parquet": true, ".ndjson": true, ".jsonl": true, ".sqlite": true, ".db": true}
+
+var configExts = map[string]bool{".json": true, ".yaml": true, ".yml": true, ".toml": true, ".ini": true, ".cfg": true, ".conf": true, ".properties": true, ".env": true, ".editorconfig": true}
+
+var docExts = map[string]bool{".md": true, ".rst": true, ".txt": true, ".adoc": true}
+
+// IsVendored reports whether a path lies inside a third-party directory.
+func IsVendored(p string) bool {
+	for _, seg := range strings.Split(path.Dir(p), "/") {
+		if vendoredDirs[seg] {
+			return true
+		}
+	}
+	return false
+}
+
+// Categorize classifies a file by path and detected language. `binary`
+// overrides everything else once content has been inspected.
+func Categorize(p, language string) string {
+	base := strings.ToLower(path.Base(p))
+	ext := path.Ext(base)
+	dirs := strings.Split(path.Dir(p), "/")
+	inDir := func(set map[string]bool) bool {
+		for _, d := range dirs {
+			if set[strings.ToLower(d)] {
+				return true
+			}
+		}
+		return false
+	}
+	isProgramming := false
+	for _, l := range ProgrammingLanguages {
+		if l == language {
+			isProgramming = true
+		}
+	}
+	switch {
+	case assetExts[ext]:
+		return CategoryAsset
+	case dataExts[ext]:
+		return CategoryData
+	case buildFiles[base] || lockFiles[base] || strings.HasPrefix(base, "dockerfile.") || strings.HasPrefix(base, "requirements") && ext == ".txt" ||
+		ext == ".csproj" || ext == ".sln" || ext == ".gradle" || ext == ".cmake" || ext == ".bazel" || ext == ".bzl" || ext == ".mk":
+		return CategoryBuild
+	case isProgramming && (inDir(testDirs) || isTestName(path.Base(p))):
+		return CategoryTest
+	case isProgramming:
+		return CategorySource
+	case docExts[ext] || base == "license" || base == "notice" || base == "authors" || inDir(docDirs) && language != "":
+		return CategoryDocs
+	case configExts[ext] || strings.HasPrefix(base, ".") || strings.HasPrefix(dirs[0], ".") && dirs[0] != ".":
+		return CategoryConfig
+	case language != "":
+		return CategorySource
+	}
+	return CategoryData
+}
+
+// isTestName applies common test-file naming conventions. CamelCase
+// suffixes (FooTest.java) are matched case-sensitively so that words such as
+// "latest" or "contest" are not mistaken for tests.
+func isTestName(name string) bool {
+	lower := strings.ToLower(name)
+	stem := strings.TrimSuffix(name, path.Ext(name))
+	lowerStem := strings.ToLower(stem)
+	return strings.HasPrefix(lower, "test_") || strings.HasSuffix(lowerStem, "_test") || strings.HasSuffix(lowerStem, ".test") ||
+		strings.HasSuffix(lowerStem, ".spec") || strings.HasSuffix(lowerStem, "_spec") || lower == "conftest.py" ||
+		(strings.HasSuffix(stem, "Test") && stem != "Test") || (strings.HasSuffix(stem, "Tests") && stem != "Tests")
+}
+
+var generatedMarkers = [][]byte{
+	[]byte("code generated"), []byte("@generated"), []byte("do not edit"), []byte("auto-generated"),
+	[]byte("autogenerated"), []byte("automatically generated"), []byte("this file was generated"), []byte("this file is generated"),
+}
+
+// IsGenerated applies name conventions and header markers. It reports a
+// heuristic judgement, which is why generated files are still inventoried.
+func IsGenerated(p string, content []byte) bool {
+	base := strings.ToLower(path.Base(p))
+	if lockFiles[base] || strings.HasSuffix(base, ".min.js") || strings.HasSuffix(base, ".min.css") ||
+		strings.HasSuffix(base, ".pb.go") || strings.HasSuffix(base, "_pb2.py") || strings.HasSuffix(base, "_pb2_grpc.py") ||
+		strings.Contains(base, ".generated.") || strings.HasSuffix(base, ".g.cs") || strings.HasSuffix(base, ".designer.cs") ||
+		strings.HasSuffix(base, ".js.map") || strings.HasSuffix(base, ".css.map") || strings.HasSuffix(base, ".snap") {
+		return true
+	}
+	if len(content) == 0 {
+		return false
+	}
+	head := content
+	if len(head) > 2048 {
+		head = head[:2048]
+	}
+	lower := bytes.ToLower(head)
+	for _, marker := range generatedMarkers {
+		if bytes.Contains(lower, marker) {
+			return true
+		}
+	}
+	// Minified bundles: very long lines in script or style files.
+	switch path.Ext(base) {
+	case ".js", ".mjs", ".cjs", ".css":
+		if len(content) > 4096 {
+			lines := bytes.Count(content, []byte{'\n'}) + 1
+			if len(content)/lines > 1000 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// DetectEncoding reports "utf-8", "utf-8-bom", "utf-16le", "utf-16be",
+// "binary" or "unknown" (text in some other 8-bit encoding).
+func DetectEncoding(content []byte) string {
+	switch {
+	case len(content) == 0:
+		return "utf-8"
+	case bytes.HasPrefix(content, []byte{0xEF, 0xBB, 0xBF}):
+		return "utf-8-bom"
+	case bytes.HasPrefix(content, []byte{0xFF, 0xFE}):
+		return "utf-16le"
+	case bytes.HasPrefix(content, []byte{0xFE, 0xFF}):
+		return "utf-16be"
+	}
+	head := content
+	if len(head) > 8192 {
+		head = head[:8192]
+	}
+	if bytes.IndexByte(head, 0) >= 0 {
+		return "binary"
+	}
+	if utf8.Valid(content) {
+		return "utf-8"
+	}
+	// A multi-byte sequence cut at the sample boundary is not evidence.
+	control := 0
+	for _, b := range head {
+		if b < 0x09 || (b > 0x0D && b < 0x20 && b != 0x1B) {
+			control++
+		}
+	}
+	if control*20 > len(head) {
+		return "binary"
+	}
+	return "unknown"
+}
