@@ -26,11 +26,11 @@ fn check_invariants(ir: &FileIr, len: usize) {
     }
     let count = ir.symbols.len() as u32;
     for r in &ir.references {
-        assert!(r.scope.map_or(true, |s| s < count));
+        assert!(r.scope.is_none_or(|s| s < count));
         in_bounds(&r.span);
     }
     for i in &ir.imports {
-        assert!(i.scope.map_or(true, |s| s < count));
+        assert!(i.scope.is_none_or(|s| s < count));
         in_bounds(&i.span);
     }
     for e in &ir.exports {

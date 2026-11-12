@@ -213,7 +213,12 @@ impl<'a> Py<'a> {
                     }
                     "comment" => {}
                     _ => {
-                        let segments = self.dotted(arg).unwrap_or_default();
+                        // `Base[T]` names the class `Base`.
+                        let named = match arg.kind() {
+                            "subscript" => arg.child_by_field_name("value").unwrap_or(arg),
+                            _ => arg,
+                        };
+                        let segments = self.dotted(named).unwrap_or_default();
                         let base = self.b.name_path(arg, segments);
                         self.b.sym(id).bases.push(base);
                     }
