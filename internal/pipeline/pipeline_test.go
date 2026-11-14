@@ -16,10 +16,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ammarkarimi/usie/database"
 	"github.com/ammarkarimi/usie/internal/platform/blob"
 	"github.com/ammarkarimi/usie/internal/platform/config"
 	"github.com/ammarkarimi/usie/internal/store"
+	"github.com/ammarkarimi/usie/internal/testdb"
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	graph "github.com/ammarkarimi/usie/services/knowledge-graph"
 	analysis "github.com/ammarkarimi/usie/services/semantic-analysis"
@@ -56,24 +56,12 @@ func engineBin(t *testing.T) string {
 
 func setup(t *testing.T) *env {
 	t.Helper()
-	url := os.Getenv("USIE_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("USIE_TEST_DATABASE_URL not set")
-	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	if _, err := database.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
+	pool := testdb.New(t)
 	e := &env{t: t, ctx: ctx, pool: pool, st: store.New(pool), queue: orchestrator.NewQueue(pool), graph: graph.NewPostgres(pool)}
-	// The queue is global: make sure nothing from other tests is runnable.
-	pool.Exec(ctx, `UPDATE analysis_jobs SET status = 'cancelled' WHERE status IN ('queued', 'running')`)
 
 	name := fmt.Sprintf("pipe-%d-%d", os.Getpid(), time.Now().UnixNano())
+	var err error
 	e.userID, e.orgID, err = e.st.Register(ctx, "open", name+"@example.test", "Tester", "x", name)
 	if err != nil {
 		t.Fatal(err)

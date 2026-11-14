@@ -1,0 +1,2984 @@
+# USIE HTTP API contract. Every route registered by the gateway must appear
+# here; services/api-gateway/api_test.go enforces that.
+openapi: "3.0.3"
+info:
+  title: "USIE API"
+  version: "0.1.0"
+  description: "REST API of the Universal Software Intelligence Engine.\n\nAuthentication is either a session cookie (obtained from /auth/login; state-changing requests must also send the X-CSRF-Token header) or an API token sent as `Authorization: Bearer usie_\u2026`.\n\nAll resources are scoped to the caller's organization. Requests for resources that belong to another organization receive 404.\n\nErrors have the shape `{\"error\": {\"code\", \"message\", \"request_id\"}}`."
+servers:
+  - url: "/api/v1"
+paths:
+  "/system":
+    get:
+      tags:
+        - "System"
+      summary: "Installation information: version, feature status, enabled sources and limits."
+      description: "Installation information: version, feature status, enabled sources and limits."
+      operationId: "get_system"
+      responses:
+        "200":
+          description: "System information."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/System"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
+  "/openapi.yaml":
+    get:
+      tags:
+        - "System"
+      summary: "This document."
+      description: "This document."
+      operationId: "get_openapi_yaml"
+      responses:
+        "200":
+          description: "OpenAPI document."
+          content:
+            "application/yaml":
+              schema:
+                type: "string"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
+  "/auth/register":
+    post:
+      tags:
+        - "Authentication"
+      summary: "Register a user and create their organization."
+      description: "Register a user and create their organization. Subject to the installation's signup mode. Starts a session."
+      operationId: "post_auth_register"
+      responses:
+        "200":
+          description: "Session started."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Session"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                email:
+                  type: "string"
+                password:
+                  type: "string"
+                  minLength: 10
+                  maxLength: 256
+                display_name:
+                  type: "string"
+                organization:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "email"
+                - "password"
+                - "display_name"
+                - "organization"
+      security: []
+  "/auth/login":
+    post:
+      tags:
+        - "Authentication"
+      summary: "Start a session."
+      description: "Start a session. Sets an HttpOnly cookie and returns the CSRF token required for state-changing requests."
+      operationId: "post_auth_login"
+      responses:
+        "200":
+          description: "Session started."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Session"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                email:
+                  type: "string"
+                password:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "email"
+                - "password"
+      security: []
+  "/auth/logout":
+    post:
+      tags:
+        - "Authentication"
+      summary: "End the current session."
+      description: "End the current session."
+      operationId: "post_auth_logout"
+      responses:
+        "204":
+          description: "Signed out."
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/auth/me":
+    get:
+      tags:
+        - "Authentication"
+      summary: "The authenticated principal."
+      description: "The authenticated principal."
+      operationId: "get_auth_me"
+      responses:
+        "200":
+          description: "Principal."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Session"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/tokens":
+    get:
+      tags:
+        - "API tokens"
+      summary: "List the caller's API tokens."
+      description: "List the caller's API tokens. Secrets are never returned."
+      operationId: "get_tokens"
+      responses:
+        "200":
+          description: "Tokens."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  tokens:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/ApiToken"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    post:
+      tags:
+        - "API tokens"
+      summary: "Create an API token."
+      description: "Create an API token. Only available to session-authenticated callers. The secret is returned once."
+      operationId: "post_tokens"
+      responses:
+        "201":
+          description: "Token created."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  token:
+                    $ref: "#/components/schemas/ApiToken"
+                  secret:
+                    type: "string"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                role:
+                  type: "string"
+                  enum:
+                    - "viewer"
+                    - "member"
+                    - "admin"
+                expires_in_days:
+                  type: "integer"
+                  minimum: 0
+                  maximum: 366
+                  default: 0
+              additionalProperties: false
+              required:
+                - "name"
+                - "role"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/tokens/{id}":
+    delete:
+      tags:
+        - "API tokens"
+      summary: "Revoke one of the caller's API tokens."
+      description: "Revoke one of the caller's API tokens."
+      operationId: "delete_tokens_id"
+      responses:
+        "204":
+          description: "Revoked."
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Token id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/workspaces":
+    get:
+      tags:
+        - "Workspaces"
+      summary: "List workspaces."
+      description: "List workspaces."
+      operationId: "get_workspaces"
+      responses:
+        "200":
+          description: "Workspaces."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  workspaces:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Workspace"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    post:
+      tags:
+        - "Workspaces"
+      summary: "Create a workspace."
+      description: "Create a workspace."
+      operationId: "post_workspaces"
+      responses:
+        "201":
+          description: "Created."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "name"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+  "/repositories":
+    get:
+      tags:
+        - "Repositories"
+      summary: "List repositories with their latest version."
+      description: "List repositories with their latest version."
+      operationId: "get_repositories"
+      responses:
+        "200":
+          description: "Repositories."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  repositories:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Repository"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    post:
+      tags:
+        - "Repositories"
+      summary: "Register a repository."
+      description: "Register a repository. `git` requires a credential-free https URL. `local` requires the admin role and a path under a configured allowed root. `upload` repositories receive ZIP archives."
+      operationId: "post_repositories"
+      responses:
+        "201":
+          description: "Created."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Repository"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                workspace_id:
+                  type: "string"
+                  format: "uuid"
+                name:
+                  type: "string"
+                source_kind:
+                  type: "string"
+                  enum:
+                    - "git"
+                    - "local"
+                    - "upload"
+                source_location:
+                  type: "string"
+                default_ref:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "name"
+                - "source_kind"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/repositories/{id}":
+    get:
+      tags:
+        - "Repositories"
+      summary: "Get a repository."
+      description: "Get a repository."
+      operationId: "get_repositories_id"
+      responses:
+        "200":
+          description: "Repository."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Repository"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    delete:
+      tags:
+        - "Repositories"
+      summary: "Delete a repository and all of its versions and analysis results."
+      description: "Delete a repository and all of its versions and analysis results."
+      operationId: "delete_repositories_id"
+      responses:
+        "204":
+          description: "Deleted."
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+  "/repositories/{id}/analyze":
+    post:
+      tags:
+        - "Repositories"
+      summary: "Create a new version of a git or local repository and queue its analysis."
+      description: "Create a new version of a git or local repository and queue its analysis."
+      operationId: "post_repositories_id_analyze"
+      responses:
+        "202":
+          description: "Queued."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Enqueued"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: false
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                ref:
+                  type: "string"
+              additionalProperties: false
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/repositories/{id}/upload":
+    post:
+      tags:
+        - "Repositories"
+      summary: "Upload a ZIP archive as a new version of an `upload` repository and queue its analysis."
+      description: "Upload a ZIP archive as a new version of an `upload` repository and queue its analysis."
+      operationId: "post_repositories_id_upload"
+      responses:
+        "202":
+          description: "Queued."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Enqueued"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/zip":
+            schema:
+              type: "string"
+              format: "binary"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/repositories/{id}/versions":
+    get:
+      tags:
+        - "Repositories"
+      summary: "List versions, newest first."
+      description: "List versions, newest first."
+      operationId: "get_repositories_id_versions"
+      responses:
+        "200":
+          description: "Versions."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  versions:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Version"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/repositories/{id}/commits":
+    get:
+      tags:
+        - "Repositories"
+      summary: "Commit history recorded from git clones (bounded depth)."
+      description: "Commit history recorded from git clones (bounded depth)."
+      operationId: "get_repositories_id_commits"
+      responses:
+        "200":
+          description: "Commits."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  commits:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Commit"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 500
+            default: 100
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/repositories/{id}/branches":
+    get:
+      tags:
+        - "Repositories"
+      summary: "Remote branches recorded at the last git import."
+      description: "Remote branches recorded at the last git import."
+      operationId: "get_repositories_id_branches"
+      responses:
+        "200":
+          description: "Branches."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  branches:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Branch"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}":
+    get:
+      tags:
+        - "Versions"
+      summary: "Get a version, including analysis statistics."
+      description: "Get a version, including analysis statistics."
+      operationId: "get_versions_id"
+      responses:
+        "200":
+          description: "Version."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Version"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/tree":
+    get:
+      tags:
+        - "Versions"
+      summary: "List the directories and files directly inside a directory."
+      description: "List the directories and files directly inside a directory."
+      operationId: "get_versions_id_tree"
+      responses:
+        "200":
+          description: "Directory listing."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  dir:
+                    type: "string"
+                  directories:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/DirEntry"
+                  files:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/SourceFile"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "dir"
+          in: "query"
+          description: "Directory path; empty for the root."
+          required: false
+          schema:
+            type: "string"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/files":
+    get:
+      tags:
+        - "Versions"
+      summary: "Flat, filtered, paged file listing."
+      description: "Flat, filtered, paged file listing."
+      operationId: "get_versions_id_files"
+      responses:
+        "200":
+          description: "Files."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  files:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/SourceFile"
+                  total:
+                    type: "integer"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "dir"
+          in: "query"
+          description: "Restrict to files below this directory."
+          required: false
+          schema:
+            type: "string"
+        - name: "language"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+        - name: "category"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+        - name: "parse_status"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: "offset"
+          in: "query"
+          description: "Number of items to skip."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 0
+            maximum: 10000000
+            default: 0
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/file":
+    get:
+      tags:
+        - "Versions"
+      summary: "One file: metadata, UTF-8 content when retained, and the symbols declared in it."
+      description: "One file: metadata, UTF-8 content when retained, and the symbols declared in it."
+      operationId: "get_versions_id_file"
+      responses:
+        "200":
+          description: "File."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  file:
+                    $ref: "#/components/schemas/SourceFile"
+                  content:
+                    type: "string"
+                    nullable: true
+                  content_unavailable_reason:
+                    type: "string"
+                  symbols:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Node"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "path"
+          in: "query"
+          description: "Repository-relative path."
+          required: true
+          schema:
+            type: "string"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/dependencies":
+    get:
+      tags:
+        - "Versions"
+      summary: "Dependencies declared in manifests."
+      description: "Dependencies declared in manifests."
+      operationId: "get_versions_id_dependencies"
+      responses:
+        "200":
+          description: "Dependencies."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  dependencies:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Dependency"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/references":
+    get:
+      tags:
+        - "Versions"
+      summary: "Syntactic references examined by the resolver, including unresolved ones with the reason."
+      description: "Syntactic references examined by the resolver, including unresolved ones with the reason."
+      operationId: "get_versions_id_references"
+      responses:
+        "200":
+          description: "References."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  references:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Reference"
+                  total:
+                    type: "integer"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "path"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+        - name: "outcome"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "resolved"
+              - "external"
+              - "builtin"
+              - "unresolved"
+        - name: "target"
+          in: "query"
+          description: "Target node key."
+          required: false
+          schema:
+            type: "string"
+        - name: "source"
+          in: "query"
+          description: "Source node key."
+          required: false
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: "offset"
+          in: "query"
+          description: "Number of items to skip."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 0
+            maximum: 10000000
+            default: 0
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/graph/stats":
+    get:
+      tags:
+        - "Knowledge graph"
+      summary: "Node and relationship counts by kind and confidence."
+      description: "Node and relationship counts by kind and confidence."
+      operationId: "get_versions_id_graph_stats"
+      responses:
+        "200":
+          description: "Statistics."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/GraphStats"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/graph/search":
+    get:
+      tags:
+        - "Knowledge graph"
+      summary: "Search nodes by name."
+      description: "Search nodes by name."
+      operationId: "get_versions_id_graph_search"
+      responses:
+        "200":
+          description: "Nodes."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  nodes:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Node"
+                  total:
+                    type: "integer"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "q"
+          in: "query"
+          description: "Case-insensitive substring of the name or qualified name."
+          required: false
+          schema:
+            type: "string"
+        - name: "kind"
+          in: "query"
+          description: "Comma-separated node kinds."
+          required: false
+          schema:
+            type: "string"
+        - name: "path_prefix"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: "offset"
+          in: "query"
+          description: "Number of items to skip."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 0
+            maximum: 10000000
+            default: 0
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/graph/node":
+    get:
+      tags:
+        - "Knowledge graph"
+      summary: "Get a node by its stable key."
+      description: "Get a node by its stable key."
+      operationId: "get_versions_id_graph_node"
+      responses:
+        "200":
+          description: "Node."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Node"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "key"
+          in: "query"
+          description: ""
+          required: true
+          schema:
+            type: "string"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/graph/neighborhood":
+    get:
+      tags:
+        - "Knowledge graph"
+      summary: "Breadth-first neighbourhood of a node, bounded in depth and size."
+      description: "Breadth-first neighbourhood of a node, bounded in depth and size."
+      operationId: "get_versions_id_graph_neighborhood"
+      responses:
+        "200":
+          description: "Subgraph."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Subgraph"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "key"
+          in: "query"
+          description: ""
+          required: true
+          schema:
+            type: "string"
+        - name: "depth"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 6
+            default: 1
+        - name: "direction"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "in"
+              - "out"
+              - "both"
+            default: "both"
+        - name: "kinds"
+          in: "query"
+          description: "Comma-separated relationship kinds."
+          required: false
+          schema:
+            type: "string"
+        - name: "min_confidence"
+          in: "query"
+          description: "Weakest confidence level to include."
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "confirmed"
+              - "probable"
+              - "inferred"
+              - "unknown"
+        - name: "max_nodes"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 2000
+            default: 200
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/graph/files":
+    get:
+      tags:
+        - "Knowledge graph"
+      summary: "The file-level import graph."
+      description: "The file-level import graph."
+      operationId: "get_versions_id_graph_files"
+      responses:
+        "200":
+          description: "Subgraph."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Subgraph"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "min_confidence"
+          in: "query"
+          description: "Weakest confidence level to include."
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "confirmed"
+              - "probable"
+              - "inferred"
+              - "unknown"
+        - name: "max_edges"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 5000
+            default: 1500
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/graph/diff":
+    get:
+      tags:
+        - "Knowledge graph"
+      summary: "Difference between this version's snapshot and a base version of the same repository, matched by stable keys."
+      description: "Difference between this version's snapshot and a base version of the same repository, matched by stable keys."
+      operationId: "get_versions_id_graph_diff"
+      responses:
+        "200":
+          description: "Diff."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  base_version_id:
+                    type: "string"
+                  head_version_id:
+                    type: "string"
+                  diff:
+                    $ref: "#/components/schemas/GraphDiff"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "base"
+          in: "query"
+          description: "Base version id."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 1000
+            default: 200
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/jobs":
+    get:
+      tags:
+        - "Jobs"
+      summary: "List analysis jobs, newest first."
+      description: "List analysis jobs, newest first."
+      operationId: "get_jobs"
+      responses:
+        "200":
+          description: "Jobs."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  jobs:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Job"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "status"
+          in: "query"
+          description: ""
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "queued"
+              - "running"
+              - "succeeded"
+              - "failed"
+              - "cancelled"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 200
+            default: 50
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/jobs/{id}":
+    get:
+      tags:
+        - "Jobs"
+      summary: "Get a job."
+      description: "Get a job."
+      operationId: "get_jobs_id"
+      responses:
+        "200":
+          description: "Job."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Job"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Job id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/jobs/{id}/cancel":
+    post:
+      tags:
+        - "Jobs"
+      summary: "Cancel a queued job, or request cancellation of a running one."
+      description: "Cancel a queued job, or request cancellation of a running one."
+      operationId: "post_jobs_id_cancel"
+      responses:
+        "200":
+          description: "Job after the request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Job"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Job id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/jobs/{id}/events":
+    get:
+      tags:
+        - "Jobs"
+      summary: "Server-Sent Events stream of job state (`event: job`), ending when the job reaches a terminal state."
+      description: "Server-Sent Events stream of job state (`event: job`), ending when the job reaches a terminal state."
+      operationId: "get_jobs_id_events"
+      responses:
+        "200":
+          description: "Event stream."
+          content:
+            "text/event-stream":
+              schema:
+                type: "string"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Job id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/workers":
+    get:
+      tags:
+        - "Workers"
+      summary: "Workers seen in the last day."
+      description: "Workers seen in the last day. Shared infrastructure; contains no tenant data."
+      operationId: "get_workers"
+      responses:
+        "200":
+          description: "Workers."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  workers:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Worker"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/audit-events":
+    get:
+      tags:
+        - "Audit"
+      summary: "Audit trail of the organization, newest first."
+      description: "Audit trail of the organization, newest first."
+      operationId: "get_audit_events"
+      responses:
+        "200":
+          description: "Events."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  events:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AuditEvent"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "before"
+          in: "query"
+          description: "Return events with an id below this value."
+          required: false
+          schema:
+            type: "integer"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 500
+            default: 100
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+components:
+  securitySchemes:
+    session:
+      type: "apiKey"
+      in: "cookie"
+      name: "usie_session"
+    token:
+      type: "http"
+      scheme: "bearer"
+  schemas:
+    Error:
+      type: "object"
+      properties:
+        error:
+          type: "object"
+          properties:
+            code:
+              type: "string"
+            message:
+              type: "string"
+            request_id:
+              type: "string"
+          additionalProperties: false
+      additionalProperties: false
+    Principal:
+      type: "object"
+      properties:
+        user_id:
+          type: "string"
+        email:
+          type: "string"
+        display_name:
+          type: "string"
+        organization_id:
+          type: "string"
+        organization_name:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "owner"
+            - "admin"
+            - "member"
+            - "viewer"
+        kind:
+          type: "string"
+          enum:
+            - "session"
+            - "token"
+      additionalProperties: false
+    Session:
+      type: "object"
+      properties:
+        principal:
+          $ref: "#/components/schemas/Principal"
+        csrf_token:
+          type: "string"
+          description: "Send as the X-CSRF-Token header on non-GET requests made with the session cookie."
+      additionalProperties: false
+    System:
+      type: "object"
+      properties:
+        version:
+          type: "string"
+        signup_allowed:
+          type: "boolean"
+        features:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id:
+                type: "string"
+              status:
+                type: "string"
+                enum:
+                  - "implemented"
+                  - "experimental"
+                  - "planned"
+                  - "unsupported"
+              detail:
+                type: "string"
+            additionalProperties: false
+        sources:
+          type: "object"
+          additionalProperties: true
+        limits:
+          type: "object"
+          additionalProperties: true
+        engine:
+          type: "object"
+          nullable: true
+          additionalProperties: true
+      additionalProperties: false
+    ApiToken:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        prefix:
+          type: "string"
+        role:
+          type: "string"
+        created_at:
+          type: "string"
+          format: "date-time"
+        last_used_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        expires_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        revoked_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+      additionalProperties: false
+    Workspace:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        created_at:
+          type: "string"
+          format: "date-time"
+      additionalProperties: false
+    Repository:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        workspace_id:
+          type: "string"
+        name:
+          type: "string"
+        source_kind:
+          type: "string"
+        source_location:
+          type: "string"
+        default_ref:
+          type: "string"
+        created_at:
+          type: "string"
+          format: "date-time"
+        latest_version:
+          allOf:
+            - $ref: "#/components/schemas/Version"
+          nullable: true
+      additionalProperties: false
+    Version:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        repository_id:
+          type: "string"
+        sequence:
+          type: "integer"
+        status:
+          type: "string"
+          enum:
+            - "pending"
+            - "analyzing"
+            - "ready"
+            - "failed"
+            - "cancelled"
+        requested_ref:
+          type: "string"
+        commit_sha:
+          type: "string"
+        branch:
+          type: "string"
+        tree_hash:
+          type: "string"
+        parent_version_id:
+          type: "string"
+          nullable: true
+        stats:
+          type: "object"
+          additionalProperties: true
+          description: "Measured analysis statistics; empty until the version is ready."
+        error:
+          type: "string"
+        created_at:
+          type: "string"
+          format: "date-time"
+        analyzed_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+      additionalProperties: false
+    Enqueued:
+      type: "object"
+      properties:
+        version_id:
+          type: "string"
+        job_id:
+          type: "string"
+      additionalProperties: false
+    Commit:
+      type: "object"
+      properties:
+        sha:
+          type: "string"
+        parents:
+          type: "array"
+          items:
+            type: "string"
+        author_name:
+          type: "string"
+        authored_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        committed_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        subject:
+          type: "string"
+      additionalProperties: false
+    Branch:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+        head_sha:
+          type: "string"
+        is_default:
+          type: "boolean"
+      additionalProperties: false
+    DirEntry:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+        path:
+          type: "string"
+        files:
+          type: "integer"
+      additionalProperties: false
+    SourceFile:
+      type: "object"
+      properties:
+        path:
+          type: "string"
+        content_hash:
+          type: "string"
+        size_bytes:
+          type: "integer"
+        language:
+          type: "string"
+        category:
+          type: "string"
+        encoding:
+          type: "string"
+        is_generated:
+          type: "boolean"
+        is_vendored:
+          type: "boolean"
+        content_stored:
+          type: "boolean"
+        parse_status:
+          type: "string"
+          enum:
+            - "parsed"
+            - "parsed_with_errors"
+            - "unsupported"
+            - "skipped"
+            - "failed"
+        parse_detail:
+          type: "string"
+        change:
+          type: "string"
+          enum:
+            - "added"
+            - "modified"
+            - "unchanged"
+        line_count:
+          type: "integer"
+        symbol_count:
+          type: "integer"
+        diagnostic_count:
+          type: "integer"
+        analyzed_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+      additionalProperties: false
+    Dependency:
+      type: "object"
+      properties:
+        manifest_path:
+          type: "string"
+        ecosystem:
+          type: "string"
+        name:
+          type: "string"
+        requirement:
+          type: "string"
+        scope:
+          type: "string"
+      additionalProperties: false
+    Reference:
+      type: "object"
+      properties:
+        path:
+          type: "string"
+        line:
+          type: "integer"
+        col:
+          type: "integer"
+        kind:
+          type: "string"
+        text:
+          type: "string"
+        source_key:
+          type: "string"
+        outcome:
+          type: "string"
+        confidence:
+          type: "string"
+        target_key:
+          type: "string"
+        rule:
+          type: "string"
+        reason:
+          type: "string"
+      additionalProperties: false
+    Node:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+          description: "Snapshot-local id used by relationships."
+        key:
+          type: "string"
+          description: "Stable key: repo, dir:<path>, file:<path>, sym:<path>#<qualified name>, ext:<ecosystem>:<name>."
+        kind:
+          type: "string"
+        name:
+          type: "string"
+        qualified_name:
+          type: "string"
+        path:
+          type: "string"
+        start_line:
+          type: "integer"
+        end_line:
+          type: "integer"
+        signature:
+          type: "string"
+        doc:
+          type: "string"
+        exported:
+          type: "boolean"
+        attrs:
+          type: "object"
+          additionalProperties: true
+      additionalProperties: false
+    Edge:
+      type: "object"
+      properties:
+        src:
+          type: "integer"
+        dst:
+          type: "integer"
+        kind:
+          type: "string"
+          enum:
+            - "CONTAINS"
+            - "IMPORTS"
+            - "EXPORTS"
+            - "CALLS"
+            - "INSTANTIATES"
+            - "EXTENDS"
+            - "IMPLEMENTS"
+            - "REFERENCES"
+            - "DEPENDS_ON"
+        confidence:
+          type: "string"
+          enum:
+            - "confirmed"
+            - "probable"
+            - "inferred"
+            - "unknown"
+        rule:
+          type: "string"
+          description: "Identifier of the resolution rule that produced the relationship."
+        evidence_path:
+          type: "string"
+        evidence_line:
+          type: "integer"
+        occurrences:
+          type: "integer"
+      additionalProperties: false
+    Subgraph:
+      type: "object"
+      properties:
+        nodes:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Node"
+        edges:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Edge"
+        truncated:
+          type: "boolean"
+          description: "True when a size bound cut the result short."
+      additionalProperties: false
+    GraphStats:
+      type: "object"
+      properties:
+        nodes:
+          type: "integer"
+        edges:
+          type: "integer"
+        nodes_by_kind:
+          type: "object"
+          additionalProperties: true
+        edges_by_kind:
+          type: "object"
+          additionalProperties: true
+        edges_by_confidence:
+          type: "object"
+          additionalProperties: true
+      additionalProperties: false
+    GraphDiff:
+      type: "object"
+      properties:
+        nodes_added:
+          type: "integer"
+        nodes_removed:
+          type: "integer"
+        nodes_changed:
+          type: "integer"
+        edges_added:
+          type: "integer"
+        edges_removed:
+          type: "integer"
+        added:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Node"
+        removed:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Node"
+        changed:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Node"
+        added_edges:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/EdgeKeys"
+        removed_edges:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/EdgeKeys"
+        truncated:
+          type: "boolean"
+      additionalProperties: false
+    EdgeKeys:
+      type: "object"
+      properties:
+        src:
+          type: "string"
+        dst:
+          type: "string"
+        kind:
+          type: "string"
+        confidence:
+          type: "string"
+      additionalProperties: false
+    Job:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        repository_id:
+          type: "string"
+        repository_name:
+          type: "string"
+        version_id:
+          type: "string"
+        kind:
+          type: "string"
+        status:
+          type: "string"
+          enum:
+            - "queued"
+            - "running"
+            - "succeeded"
+            - "failed"
+            - "cancelled"
+        priority:
+          type: "integer"
+        attempts:
+          type: "integer"
+        max_attempts:
+          type: "integer"
+        cancel_requested:
+          type: "boolean"
+        worker_id:
+          type: "string"
+          nullable: true
+        stage:
+          type: "string"
+        progress:
+          type: "object"
+          additionalProperties: true
+        error:
+          type: "string"
+        created_at:
+          type: "string"
+          format: "date-time"
+        started_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        finished_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+      additionalProperties: false
+    Worker:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        hostname:
+          type: "string"
+        pid:
+          type: "integer"
+        version:
+          type: "string"
+        capabilities:
+          type: "object"
+          additionalProperties: true
+        status:
+          type: "string"
+        started_at:
+          type: "string"
+          format: "date-time"
+        last_heartbeat_at:
+          type: "string"
+          format: "date-time"
+        jobs_completed:
+          type: "integer"
+        jobs_failed:
+          type: "integer"
+        online:
+          type: "boolean"
+      additionalProperties: false
+    AuditEvent:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+        actor_user_id:
+          type: "string"
+          nullable: true
+        actor_email:
+          type: "string"
+        actor_kind:
+          type: "string"
+        action:
+          type: "string"
+        target_type:
+          type: "string"
+        target_id:
+          type: "string"
+        outcome:
+          type: "string"
+        ip:
+          type: "string"
+        request_id:
+          type: "string"
+        detail:
+          type: "object"
+          additionalProperties: true
+        created_at:
+          type: "string"
+          format: "date-time"
+      additionalProperties: false

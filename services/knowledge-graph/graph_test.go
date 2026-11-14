@@ -9,8 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ammarkarimi/usie/database"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/ammarkarimi/usie/internal/testdb"
 )
 
 func TestValidate(t *testing.T) {
@@ -281,19 +280,8 @@ func TestMemoryConformance(t *testing.T) {
 // TestPostgresConformance runs when USIE_TEST_DATABASE_URL points at a
 // disposable database (see scripts/test-db.sh).
 func TestPostgresConformance(t *testing.T) {
-	url := os.Getenv("USIE_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("USIE_TEST_DATABASE_URL not set")
-	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	if _, err := database.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
+	pool := testdb.New(t)
 	scopes := map[int]Scope{}
 	scope := func(i int) Scope {
 		if s, ok := scopes[i]; ok {

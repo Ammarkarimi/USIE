@@ -1,23 +1,23 @@
+
 # Build outputs
-/engines/target/
-/bin/
-/dist/
-node_modules/
-apps/*/dist/
-packages/*/dist/
-*.tsbuildinfo
-coverage/
+# Editors / OS
+# Local runtime state
+*.log
 *.out
 *.test
-
-# Local runtime state
-/.data/
-/.usie/
+*.tsbuildinfo
+.DS_Store
 .env
 .env.local
-*.log
-
-# Editors / OS
 .idea/
 .vscode/
-.DS_Store
+/.data/
+/.usie/
+/bin/
+/dist/
+/engines/target/
+apps/*/dist/
+bin/
+coverage/
+node_modules/
+packages/*/dist/
