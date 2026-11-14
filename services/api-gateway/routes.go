@@ -47,6 +47,13 @@ func routes() []route {
 		{Method: "POST", Path: v + "/jobs/{id}/cancel", MinRole: "member", Handler: (*Server).cancelJob},
 		{Method: "GET", Path: v + "/jobs/{id}/events", MinRole: "viewer", Handler: (*Server).jobEvents, Raw: true},
 
+		{Method: "GET", Path: v + "/ai/status", MinRole: "viewer", Handler: (*Server).getAIStatus},
+		{Method: "GET", Path: v + "/ai/conversations", MinRole: "viewer", Handler: (*Server).listConversations},
+		{Method: "POST", Path: v + "/ai/conversations", MinRole: "member", Handler: (*Server).createConversation},
+		{Method: "GET", Path: v + "/ai/conversations/{id}", MinRole: "viewer", Handler: (*Server).getConversation},
+		{Method: "DELETE", Path: v + "/ai/conversations/{id}", MinRole: "member", Handler: (*Server).deleteConversation},
+		{Method: "POST", Path: v + "/ai/conversations/{id}/messages", MinRole: "member", Handler: (*Server).askFollowup},
+
 		{Method: "GET", Path: v + "/workers", MinRole: "viewer", Handler: (*Server).listWorkers},
 		{Method: "GET", Path: v + "/audit-events", MinRole: "admin", Handler: (*Server).listAudit},
 	}

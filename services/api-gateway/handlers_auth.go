@@ -30,7 +30,7 @@ var features = []map[string]string{
 	{"id": "semantic-resolution", "status": "implemented", "detail": "Imports, exports, calls, instantiation and inheritance with confidence levels and provenance. No type inference or data-flow analysis."},
 	{"id": "knowledge-graph", "status": "implemented", "detail": "Versioned snapshots in PostgreSQL with search, bounded traversal and snapshot diff."},
 	{"id": "change-impact", "status": "experimental", "detail": "Dependents are available as reverse graph traversal. No risk scoring or test selection."},
-	{"id": "ai-reasoning", "status": "planned", "detail": "Not implemented."},
+	{"id": "ai-reasoning", "status": "experimental", "detail": "Questions about an analyzed version are answered from knowledge-graph evidence; every claim is checked against the evidence it cites. Requires an AI provider to be configured."},
 	{"id": "transformation", "status": "planned", "detail": "Not implemented."},
 	{"id": "verification", "status": "planned", "detail": "Not implemented."},
 	{"id": "distributed-execution", "status": "experimental", "detail": "Multiple workers share a PostgreSQL job queue with leases and retries. No sandboxed build or test execution."},
@@ -41,8 +41,15 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request, _ *store.Prin
 	if err != nil {
 		return err
 	}
+	list := make([]map[string]string, 0, len(features))
+	for _, f := range features {
+		if f["id"] == "ai-reasoning" && (s.AI == nil || !s.AI.Enabled()) {
+			f = map[string]string{"id": f["id"], "status": "unsupported", "detail": "Implemented but not enabled here: no AI provider is configured (set ANTHROPIC_API_KEY)."}
+		}
+		list = append(list, f)
+	}
 	out := map[string]any{
-		"version": s.Version, "signup_allowed": signup, "features": features,
+		"version": s.Version, "signup_allowed": signup, "features": list,
 		"sources": map[string]bool{"git": true, "upload": true, "local": len(s.Cfg.AllowedLocalRoots) > 0},
 		"limits": map[string]int64{"max_upload_bytes": s.Cfg.MaxUploadBytes, "max_file_bytes": s.Cfg.MaxFileBytes,
 			"max_repository_files": int64(s.Cfg.MaxRepoFiles), "max_repository_bytes": s.Cfg.MaxRepoBytes},

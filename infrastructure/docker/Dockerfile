@@ -15,7 +15,7 @@ COPY packages/ packages/
 COPY apps/web/ apps/web/
 RUN pnpm install --frozen-lockfile && pnpm --filter @usie/web build
 
-FROM golang:1.24-bookworm AS services
+FROM golang:1.25-bookworm AS services
 WORKDIR /src
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 COPY go.mod go.sum ./

@@ -133,6 +133,7 @@ type harness struct {
 	pool   *pgxpool.Pool
 	worker func(ctx context.Context)
 	root   string
+	api    *Server
 }
 
 func newHarness(t *testing.T, signup string) *harness {
@@ -152,7 +153,7 @@ func newHarness(t *testing.T, signup string) *harness {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	queue := orchestrator.NewQueue(pool)
 	s := &Server{Cfg: cfg, Store: store.New(pool), Queue: queue, Graph: graph.NewPostgres(pool), Blobs: blobs, Log: log, Version: "test"}
-	h := &harness{t: t, srv: httptest.NewServer(s.Handler()), pool: pool, root: root}
+	h := &harness{t: t, srv: httptest.NewServer(s.Handler()), pool: pool, root: root, api: s}
 	t.Cleanup(h.srv.Close)
 
 	h.worker = func(ctx context.Context) {

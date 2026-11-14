@@ -1,7 +1,8 @@
-# Developer entry points. Requirements: Go 1.24+, Rust 1.90+, Node 20+ with
+# Developer entry points. Requirements: Go 1.25+, Rust 1.90+, Node 20+ with
 # pnpm, git, and PostgreSQL 14+ server binaries for the test database.
 
-export GOTOOLCHAIN := local
+# Go 1.25+ is required; an older local Go downloads 1.25 automatically.
+export GOTOOLCHAIN := go1.25.0+auto
 ENGINE := engines/target/release/usie-engine
 
 .PHONY: all build engine services web test test-rust test-go test-web lint fmt dev db-start db-stop

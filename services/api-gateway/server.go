@@ -29,6 +29,7 @@ import (
 	"github.com/ammarkarimi/usie/internal/platform/blob"
 	"github.com/ammarkarimi/usie/internal/platform/config"
 	"github.com/ammarkarimi/usie/internal/store"
+	ai "github.com/ammarkarimi/usie/services/ai-reasoning"
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	graph "github.com/ammarkarimi/usie/services/knowledge-graph"
 	analysis "github.com/ammarkarimi/usie/services/semantic-analysis"
@@ -52,6 +53,8 @@ type Server struct {
 	// Engine is nil when the engine binary is not available to the API
 	// process; analysis then depends entirely on workers.
 	Engine *analysis.Info
+	// AI answers questions about repositories; nil disables the feature.
+	AI *ai.Service
 	// WebDir, when set, is served as the single-page application.
 	WebDir string
 

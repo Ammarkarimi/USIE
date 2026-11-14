@@ -46,6 +46,16 @@ type Config struct {
 
 	RateLimitPerMinute     int
 	AuthRateLimitPerMinute int
+	// AI reasoning. AIProvider is "anthropic" or "none"; it defaults to
+	// "anthropic" when ANTHROPIC_API_KEY is set and "none" otherwise.
+	AIProvider            string
+	AnthropicAPIKey       string
+	AIModel               string
+	AIEffort              string
+	AIDailyTokenBudget    int64
+	AIUserRequestsPerHour int
+	AIMaxConcurrent       int
+
 	// TrustedProxyHops is the number of reverse proxies in front of the API
 	// that append to X-Forwarded-For (counting the one that connects). 0
 	// ignores forwarding headers and uses the peer address.
@@ -116,6 +126,19 @@ func Load() (Config, error) {
 	c.EngineTimeout = duration("USIE_ENGINE_TIMEOUT", 30*time.Minute)
 	c.RateLimitPerMinute = int(integer("USIE_RATE_LIMIT_PER_MINUTE", 600))
 	c.AuthRateLimitPerMinute = int(integer("USIE_AUTH_RATE_LIMIT_PER_MINUTE", 10))
+	c.AnthropicAPIKey = os.Getenv("ANTHROPIC_API_KEY")
+	c.AIProvider = os.Getenv("USIE_AI_PROVIDER")
+	if c.AIProvider == "" {
+		c.AIProvider = "none"
+		if c.AnthropicAPIKey != "" {
+			c.AIProvider = "anthropic"
+		}
+	}
+	c.AIModel = env("USIE_AI_MODEL", "claude-opus-5-5")
+	c.AIEffort = env("USIE_AI_EFFORT", "medium")
+	c.AIDailyTokenBudget = integer("USIE_AI_DAILY_TOKEN_BUDGET", 2_000_000)
+	c.AIUserRequestsPerHour = int(integer("USIE_AI_USER_REQUESTS_PER_HOUR", 30))
+	c.AIMaxConcurrent = int(integer("USIE_AI_MAX_CONCURRENT", 4))
 	if v := os.Getenv("USIE_TRUSTED_PROXY_HOPS"); v != "" {
 		n, e := strconv.Atoi(v)
 		if e == nil && (n < 0 || n > 10) {
@@ -135,6 +158,15 @@ func Load() (Config, error) {
 	case "first-user", "open", "closed":
 	default:
 		return c, fmt.Errorf("USIE_SIGNUP_MODE must be first-user, open or closed")
+	}
+	switch c.AIProvider {
+	case "none":
+	case "anthropic":
+		if c.AnthropicAPIKey == "" {
+			return c, fmt.Errorf("USIE_AI_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
+		}
+	default:
+		return c, fmt.Errorf("USIE_AI_PROVIDER must be anthropic or none")
 	}
 	if c.DataDir, err = filepath.Abs(c.DataDir); err != nil {
 		return c, err

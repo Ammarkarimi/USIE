@@ -2386,6 +2386,348 @@ paths:
         - session: []
         - token: []
       x-min-role: "admin"
+  "/ai/status":
+    get:
+      tags:
+        - "AI"
+      summary: "Whether AI answers are available, the provider and model, and today's token use."
+      description: "Whether AI answers are available, the provider and model, and today's token use. The data notice states what is sent to the provider."
+      operationId: "get_ai_status"
+      responses:
+        "200":
+          description: "Status."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AIStatus"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, hourly AI question limit, or daily AI budget exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/ai/conversations":
+    get:
+      tags:
+        - "AI"
+      summary: "List conversations, most recently updated first."
+      description: "List conversations, most recently updated first."
+      operationId: "get_ai_conversations"
+      parameters:
+        - name: "repository_id"
+          in: "query"
+          description: "Only conversations about this repository."
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "limit"
+          in: "query"
+          description: "Maximum number of items."
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: "Conversations."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: false
+                properties:
+                  conversations:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AIConversation"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, hourly AI question limit, or daily AI budget exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    post:
+      tags:
+        - "AI"
+      summary: "Ask a question about an analyzed version, starting a conversation."
+      description: "Ask a question about an analyzed version, starting a conversation. The answer is generated asynchronously: the response contains a pending assistant message; poll the conversation until its status is ok, refused or error."
+      operationId: "post_ai_conversations"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "version_id"
+                - "question"
+              properties:
+                version_id:
+                  type: "string"
+                  format: "uuid"
+                  description: "An analyzed (ready) version of a repository."
+                question:
+                  type: "string"
+                  maxLength: 4000
+                focus_key:
+                  type: "string"
+                  description: "Optional graph node key the question is about (for example the symbol open in the code view)."
+      responses:
+        "202":
+          description: "Question accepted; the answer is pending."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AIConversation"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "Conflict: the version is not analyzed, or an answer is still being generated."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, hourly AI question limit, or daily AI budget exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "No AI provider is configured on this installation."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/ai/conversations/{id}":
+    get:
+      tags:
+        - "AI"
+      summary: "A conversation with all messages, answers and the evidence each answer was given."
+      description: "A conversation with all messages, answers and the evidence each answer was given."
+      operationId: "get_ai_conversations_id"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Conversation id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      responses:
+        "200":
+          description: "Conversation."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AIConversation"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, hourly AI question limit, or daily AI budget exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    delete:
+      tags:
+        - "AI"
+      summary: "Delete a conversation (its creator or an administrator)."
+      description: "Delete a conversation (its creator or an administrator)."
+      operationId: "delete_ai_conversations_id"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Conversation id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      responses:
+        "204":
+          description: "Deleted."
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, hourly AI question limit, or daily AI budget exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/ai/conversations/{id}/messages":
+    post:
+      tags:
+        - "AI"
+      summary: "Ask a follow-up question in a conversation."
+      description: "Ask a follow-up question in a conversation. Earlier exchanges are sent to the provider as context."
+      operationId: "post_ai_conversations_id_messages"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Conversation id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "question"
+              properties:
+                question:
+                  type: "string"
+                  maxLength: 4000
+                focus_key:
+                  type: "string"
+                  description: "Optional graph node key the question is about (for example the symbol open in the code view)."
+      responses:
+        "202":
+          description: "Question accepted; the answer is pending."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AIConversation"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "Conflict: the version is not analyzed, or an answer is still being generated."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, hourly AI question limit, or daily AI budget exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "No AI provider is configured on this installation."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
 components:
   securitySchemes:
     session:
@@ -2982,3 +3324,176 @@ components:
           type: "string"
           format: "date-time"
       additionalProperties: false
+    AIStatus:
+      type: "object"
+      additionalProperties: false
+      properties:
+        enabled:
+          type: "boolean"
+        provider:
+          type: "string"
+        model:
+          type: "string"
+        daily_token_budget:
+          type: "integer"
+          description: "Tokens per organization per UTC day; 0 means no cap."
+        tokens_used_today:
+          type: "integer"
+        data_notice:
+          type: "string"
+    AIConversation:
+      type: "object"
+      additionalProperties: false
+      properties:
+        id:
+          type: "string"
+        repository_id:
+          type: "string"
+        version_id:
+          type: "string"
+        title:
+          type: "string"
+        created_by:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "string"
+          format: "date-time"
+        updated_at:
+          type: "string"
+          format: "date-time"
+        messages:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AIMessage"
+    AIMessage:
+      type: "object"
+      additionalProperties: false
+      properties:
+        id:
+          type: "string"
+        seq:
+          type: "integer"
+        role:
+          type: "string"
+          enum:
+            - "user"
+            - "assistant"
+        content:
+          type: "string"
+          description: "The question, or the answer summary."
+        focus_key:
+          type: "string"
+        status:
+          type: "string"
+          enum:
+            - "pending"
+            - "ok"
+            - "error"
+            - "refused"
+        answer:
+          $ref: "#/components/schemas/AIAnswer"
+        context:
+          type: "array"
+          description: "The evidence items sent to the model for this answer."
+          items:
+            $ref: "#/components/schemas/AIEvidence"
+        provider:
+          type: "string"
+        model:
+          type: "string"
+          description: "The model that produced the answer."
+        input_tokens:
+          type: "integer"
+        output_tokens:
+          type: "integer"
+        cache_read_tokens:
+          type: "integer"
+        latency_ms:
+          type: "integer"
+        error:
+          type: "string"
+        created_at:
+          type: "string"
+          format: "date-time"
+        completed_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+    AIAnswer:
+      type: "object"
+      description: "The model's structured answer after validation. Empty for user messages and unfinished answers."
+      additionalProperties: false
+      properties:
+        answerable:
+          type: "string"
+          enum:
+            - "yes"
+            - "partially"
+            - "no"
+        summary:
+          type: "string"
+          description: "Plain text; may cite evidence as [C3]."
+        claims:
+          type: "array"
+          items:
+            type: "object"
+            additionalProperties: false
+            properties:
+              statement:
+                type: "string"
+              support:
+                type: "string"
+                enum:
+                  - "evidence"
+                  - "inference"
+                  - "unsupported"
+                description: "evidence: cites evidence that was provided; inference: the model's own conclusion; unsupported: presented as evidence-based without valid citations."
+              citations:
+                type: "array"
+                items:
+                  type: "string"
+              invalid_citations:
+                type: "array"
+                items:
+                  type: "string"
+        limitations:
+          type: "array"
+          items:
+            type: "string"
+        followups:
+          type: "array"
+          items:
+            type: "string"
+        validation_notes:
+          type: "array"
+          items:
+            type: "string"
+    AIEvidence:
+      type: "object"
+      additionalProperties: false
+      properties:
+        id:
+          type: "string"
+        kind:
+          type: "string"
+          enum:
+            - "overview"
+            - "readme"
+            - "file_index"
+            - "symbol"
+            - "file"
+        key:
+          type: "string"
+        path:
+          type: "string"
+        start_line:
+          type: "integer"
+        end_line:
+          type: "integer"
+        title:
+          type: "string"
+        content:
+          type: "string"
+        truncated:
+          type: "boolean"

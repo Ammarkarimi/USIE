@@ -14,6 +14,7 @@ import (
 	"github.com/ammarkarimi/usie/internal/platform/config"
 	"github.com/ammarkarimi/usie/internal/platform/runtime"
 	"github.com/ammarkarimi/usie/internal/store"
+	ai "github.com/ammarkarimi/usie/services/ai-reasoning"
 	api "github.com/ammarkarimi/usie/services/api-gateway"
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	graph "github.com/ammarkarimi/usie/services/knowledge-graph"
@@ -47,6 +48,24 @@ func main() {
 		Cfg: cfg, Store: st, Queue: orchestrator.NewQueue(pool), Graph: graph.NewPostgres(pool), Blobs: blobs,
 		Log: log, Version: runtime.Version, WebDir: os.Getenv("USIE_WEB_DIR"),
 	}
+	if cfg.AIProvider == "anthropic" {
+		provider, err := ai.NewAnthropic(ai.AnthropicConfig{APIKey: cfg.AnthropicAPIKey, Model: cfg.AIModel, Effort: cfg.AIEffort})
+		if err != nil {
+			log.Error("AI provider configuration is invalid", "error", err.Error())
+			os.Exit(2)
+		}
+		server.AI = &ai.Service{
+			Pool: pool, Provider: provider, Graph: server.Graph, Sources: api.AISources(st, blobs, cfg.MaxFileBytes), Log: log,
+			Cfg: ai.Config{DailyTokenBudget: cfg.AIDailyTokenBudget, UserRequestsPerHour: cfg.AIUserRequestsPerHour, MaxConcurrent: cfg.AIMaxConcurrent},
+		}
+		if err := server.AI.FailStale(ctx); err != nil {
+			log.Warn("could not clean up interrupted AI answers", "error", err.Error())
+		}
+		log.Info("AI answers enabled", "provider", provider.Name(), "model", provider.Model(), "effort", cfg.AIEffort)
+	} else {
+		log.Info("AI answers disabled: no AI provider configured")
+	}
+
 	// The engine is optional here: it only feeds the system-information endpoint.
 	infoCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	if info, err := (analysis.Engine{Bin: cfg.EngineBin}).Info(infoCtx); err == nil {

@@ -8,6 +8,7 @@ permissions:
   contents: read
 
 env:
+  # Use the Go version setup-go installs from go.mod; never download another.
   GOTOOLCHAIN: local
 
 jobs:
