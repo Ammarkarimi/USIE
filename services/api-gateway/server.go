@@ -223,7 +223,7 @@ func (s *Server) wrap(rt route) http.Handler {
 		sw := &statusWriter{ResponseWriter: w}
 		var principal *store.Principal
 		err := func() error {
-			ip := clientIP(r)
+			ip := s.clientIP(r)
 			if !s.limiter.allow(ip) || (rt.AuthLimited && !s.authLim.allow(ip)) {
 				sw.Header().Set("Retry-After", "30")
 				return &apiError{http.StatusTooManyRequests, "rate_limited", "too many requests; retry later"}
@@ -263,7 +263,7 @@ func (s *Server) wrap(rt route) http.Handler {
 		}
 		s.requests.WithLabelValues(rt.Method, rt.Path, strconv.Itoa(status)).Inc()
 		s.latency.WithLabelValues(rt.Path).Observe(time.Since(start).Seconds())
-		attrs := []any{"request_id", requestID(r), "method", r.Method, "route", rt.Path, "status", status, "duration_ms", time.Since(start).Milliseconds(), "ip", clientIP(r)}
+		attrs := []any{"request_id", requestID(r), "method", r.Method, "route", rt.Path, "status", status, "duration_ms", time.Since(start).Milliseconds(), "ip", s.clientIP(r)}
 		if principal != nil {
 			attrs = append(attrs, "user_id", principal.UserID, "organization_id", principal.OrgID)
 		}
@@ -351,7 +351,7 @@ func decode(r *http.Request, v any) error {
 }
 
 func (s *Server) audit(r *http.Request, p *store.Principal, action, targetType, targetID, outcome string, detail map[string]any) {
-	e := store.AuditEvent{Action: action, TargetType: targetType, TargetID: targetID, Outcome: outcome, IP: clientIP(r), RequestID: requestID(r), Detail: detail}
+	e := store.AuditEvent{Action: action, TargetType: targetType, TargetID: targetID, Outcome: outcome, IP: s.clientIP(r), RequestID: requestID(r), Detail: detail}
 	if p != nil {
 		e.OrgID, e.ActorID, e.ActorKind = p.OrgID, &p.UserID, p.Kind
 	}
@@ -363,14 +363,40 @@ func (s *Server) audit(r *http.Request, p *store.Principal, action, targetType, 
 	}
 }
 
-// clientIP is the peer address. Forwarding headers are not trusted: behind a
-// reverse proxy, rate limits apply per proxy unless the proxy enforces its own.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+// clientIP identifies the client for rate limiting and audit records.
+//
+// By default it is the peer address and forwarding headers are ignored.
+// With USIE_TRUSTED_PROXY_HOPS=N, the address list is X-Forwarded-For
+// followed by the peer, and the client is the entry N places from the end:
+// the address recorded by the outermost trusted proxy. Entries further left
+// are client-supplied and never used. A request that bypasses the proxies can
+// still forge the header, so per-account limits on sign-in do not rely on it.
+func (s *Server) clientIP(r *http.Request) string {
+	peer, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		peer = r.RemoteAddr
 	}
-	return host
+	hops := s.Cfg.TrustedProxyHops
+	if hops <= 0 {
+		return peer
+	}
+	var addrs []string
+	for _, h := range r.Header.Values("X-Forwarded-For") {
+		for _, part := range strings.Split(h, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				addrs = append(addrs, part)
+			}
+		}
+	}
+	addrs = append(addrs, peer)
+	i := len(addrs) - 1 - hops
+	if i < 0 {
+		i = 0
+	}
+	if ip := net.ParseIP(addrs[i]); ip != nil {
+		return ip.String()
+	}
+	return peer
 }
 
 func queryInt(r *http.Request, name string, def, min, max int) (int, error) {

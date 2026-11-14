@@ -1,0 +1,46 @@
+# Fly.io deployment of the USIE backend: API, analysis worker and PostgreSQL
+# in one machine with one volume (see infrastructure/docker/fly-start.sh).
+# The web app is served by Vercel, which proxies /api to this app.
+#
+#   fly deploy --remote-only
+
+app = "usie-f52a60d5"
+primary_region = "iad"
+
+[build]
+  dockerfile = "infrastructure/docker/Dockerfile"
+  build-target = "single-machine"
+
+[env]
+  USIE_HTTP_ADDR = ":8080"
+  USIE_COOKIE_SECURE = "true"
+  USIE_SIGNUP_MODE = "first-user"
+  USIE_WORKER_CONCURRENCY = "2"
+  # Requests arrive through Vercel and then the Fly proxy.
+  USIE_TRUSTED_PROXY_HOPS = "2"
+  # Requests are proxied through Vercel, whose request bodies are limited.
+  USIE_MAX_UPLOAD_BYTES = "4000000"
+
+[[mounts]]
+  source = "usie_data"
+  destination = "/data"
+  initial_size = "10gb"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # The worker runs in this machine: it must not be stopped when idle.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/readyz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

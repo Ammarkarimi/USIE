@@ -147,6 +147,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request, _ *store.Principa
 	if len(in.Password) > authn.MaxPasswordLength || len(in.Email) > 320 {
 		return errBadRequest("invalid credentials format")
 	}
+	// Per-account limit: holds even when client addresses are shared (proxies)
+	// or forged, which the per-IP limit cannot guarantee.
+	if !s.authLim.allow("account:" + strings.ToLower(strings.TrimSpace(in.Email))) {
+		w.Header().Set("Retry-After", "60")
+		return &apiError{http.StatusTooManyRequests, "rate_limited", "too many sign-in attempts for this account; retry later"}
+	}
 	user, err := s.Store.UserByEmail(r.Context(), strings.TrimSpace(in.Email))
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err

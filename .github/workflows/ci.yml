@@ -84,4 +84,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f infrastructure/docker/Dockerfile -t usie:ci .
+      - run: docker build -f infrastructure/docker/Dockerfile --target runtime -t usie:ci .
+      - run: docker build -f infrastructure/docker/Dockerfile --target single-machine -t usie:ci-single .

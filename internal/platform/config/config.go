@@ -46,6 +46,10 @@ type Config struct {
 
 	RateLimitPerMinute     int
 	AuthRateLimitPerMinute int
+	// TrustedProxyHops is the number of reverse proxies in front of the API
+	// that append to X-Forwarded-For (counting the one that connects). 0
+	// ignores forwarding headers and uses the peer address.
+	TrustedProxyHops int
 }
 
 func Load() (Config, error) {
@@ -112,6 +116,14 @@ func Load() (Config, error) {
 	c.EngineTimeout = duration("USIE_ENGINE_TIMEOUT", 30*time.Minute)
 	c.RateLimitPerMinute = int(integer("USIE_RATE_LIMIT_PER_MINUTE", 600))
 	c.AuthRateLimitPerMinute = int(integer("USIE_AUTH_RATE_LIMIT_PER_MINUTE", 10))
+	if v := os.Getenv("USIE_TRUSTED_PROXY_HOPS"); v != "" {
+		n, e := strconv.Atoi(v)
+		if e == nil && (n < 0 || n > 10) {
+			e = fmt.Errorf("must be between 0 and 10")
+		}
+		fail("USIE_TRUSTED_PROXY_HOPS", e)
+		c.TrustedProxyHops = n
+	}
 	if err != nil {
 		return c, err
 	}

@@ -47,6 +47,7 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile
+      target: runtime
     command: ["usie-api"]
     ports:
       - "127.0.0.1:8080:8080"

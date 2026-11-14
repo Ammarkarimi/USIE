@@ -27,7 +27,7 @@ ARG VERSION=dev
 RUN go build -trimpath -ldflags "-s -w -X github.com/ammarkarimi/usie/internal/platform/runtime.Version=${VERSION}" \
       -o /out/ ./services/api-gateway/cmd/usie-api ./services/execution-orchestrator/cmd/usie-worker
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS runtime
 # git is needed by the worker to clone repositories; nothing else is installed.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git \
@@ -36,6 +36,7 @@ RUN apt-get update \
 COPY --from=engine /src/engines/target/release/usie-engine /usr/local/bin/usie-engine
 COPY --from=services /out/usie-api /out/usie-worker /usr/local/bin/
 COPY --from=web /src/apps/web/dist /usr/share/usie/web
+COPY infrastructure/docker/usie-all.sh /usr/local/bin/usie-all
 ENV USIE_ENGINE_BIN=/usr/local/bin/usie-engine \
     USIE_WEB_DIR=/usr/share/usie/web \
     USIE_DATA_DIR=/var/lib/usie \
@@ -44,3 +45,15 @@ USER usie
 WORKDIR /var/lib/usie
 EXPOSE 8080
 CMD ["usie-api"]
+
+# Single-machine variant (Fly.io): API, worker and, unless USIE_DATABASE_URL
+# is set, PostgreSQL on one volume. The entrypoint starts as root to prepare
+# the volume and start PostgreSQL, then runs USIE as the `usie` user.
+FROM runtime AS single-machine
+USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-15 \
+ && rm -rf /var/lib/apt/lists/*
+COPY infrastructure/docker/fly-start.sh /usr/local/bin/fly-start
+ENV USIE_DATA_DIR=/data/usie
+CMD ["fly-start"]

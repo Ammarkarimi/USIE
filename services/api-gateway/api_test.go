@@ -82,6 +82,36 @@ func TestRateLimiter(t *testing.T) {
 	}
 }
 
+func TestClientIP(t *testing.T) {
+	req := func(xff ...string) *http.Request {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = "10.0.0.9:1234"
+		for _, v := range xff {
+			r.Header.Add("X-Forwarded-For", v)
+		}
+		return r
+	}
+	direct := &Server{}
+	if got := direct.clientIP(req("1.2.3.4")); got != "10.0.0.9" {
+		t.Errorf("without trusted proxies the header must be ignored: %s", got)
+	}
+	// Two trusted proxies: Vercel sets the client, Fly appends Vercel's address.
+	proxied := &Server{Cfg: config.Config{TrustedProxyHops: 2}}
+	if got := proxied.clientIP(req("203.0.113.7, 198.51.100.1")); got != "203.0.113.7" {
+		t.Errorf("client behind two proxies: %s", got)
+	}
+	// A client-supplied entry to the left of the trusted ones is ignored.
+	if got := proxied.clientIP(req("6.6.6.6", "203.0.113.7, 198.51.100.1")); got != "203.0.113.7" {
+		t.Errorf("forged leftmost entry was used: %s", got)
+	}
+	if got := proxied.clientIP(req()); got != "10.0.0.9" {
+		t.Errorf("missing header: %s", got)
+	}
+	if got := proxied.clientIP(req("not-an-ip, 198.51.100.1")); got != "10.0.0.9" {
+		t.Errorf("garbage entry: %s", got)
+	}
+}
+
 func TestRepoPathValidation(t *testing.T) {
 	for _, p := range []string{"a.py", "src/a/b.ts", "x"} {
 		if _, err := repoPath(p, false); err != nil {
