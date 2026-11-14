@@ -1,0 +1,71 @@
+# Local deployment: PostgreSQL, the API (serving the web app) and one worker.
+#   docker compose -f infrastructure/docker/compose.yaml up --build
+# Then open http://localhost:8080 and create the first account.
+#
+# The API and the worker share the `usie-data` volume because the blob store
+# is a filesystem directory (an object-storage backend is planned; ADR 0004).
+
+name: usie
+
+x-common: &common
+  image: usie:local
+  environment: &env
+    USIE_DATABASE_URL: postgres://usie:usie@postgres:5432/usie?sslmode=disable
+    USIE_DATA_DIR: /var/lib/usie
+    # Plain HTTP on localhost. Set to true behind TLS.
+    USIE_COOKIE_SECURE: "false"
+  volumes:
+    - usie-data:/var/lib/usie
+  depends_on:
+    postgres:
+      condition: service_healthy
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs: [/tmp]
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: usie
+      POSTGRES_PASSWORD: usie
+      POSTGRES_DB: usie
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usie -d usie"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    <<: *common
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+    command: ["usie-api"]
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  worker:
+    <<: *common
+    command: ["usie-worker"]
+    environment:
+      <<: *env
+      USIE_WORKER_CONCURRENCY: "2"
+    # Bound what analysis of a hostile repository can consume.
+    mem_limit: 4g
+    pids_limit: 256
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  usie-data:

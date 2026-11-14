@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+engines/target
+bin
+.data
+.git
+*.log

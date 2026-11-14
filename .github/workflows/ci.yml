@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engines
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engines
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --release --locked -p usie-engine
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usie-engine
+          path: engines/target/release/usie-engine
+
+  go:
+    needs: rust
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: usie
+          POSTGRES_PASSWORD: usie
+          POSTGRES_DB: usie
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U usie" --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: usie-engine
+          path: engines/target/release
+      - run: chmod +x engines/target/release/usie-engine
+      - run: test -z "$(gofmt -l database internal services)"
+      - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+      - run: go test -count=1 -race ./...
+        env:
+          USIE_TEST_DATABASE_URL: postgres://usie:usie@localhost:5432/usie?sslmode=disable
+          USIE_ENGINE_BIN: ${{ github.workspace }}/engines/target/release/usie-engine
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r run typecheck
+      - run: pnpm -r run test
+      - run: pnpm --filter @usie/web build
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f infrastructure/docker/Dockerfile -t usie:ci .
