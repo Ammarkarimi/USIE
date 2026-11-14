@@ -36,6 +36,27 @@ This is a **single-machine** deployment: one volume, no failover. Fly takes
 daily volume snapshots; restore them to recover. Scaling out requires an
 external database and an object-storage blob backend (ADR 0004).
 
+### First deployment checklist (run on your own computer)
+
+1. Install the Fly CLI: `brew install flyctl` (macOS),
+   `curl -L https://fly.io/install.sh | sh` (Linux) or
+   `iwr https://fly.io/install.ps1 -useb | iex` (Windows PowerShell).
+2. `fly auth login` (or `fly auth signup`), then add a payment card under
+   Billing in the Fly dashboard.
+3. `git clone --branch ccr-352cfc47-nqw12y https://github.com/ammarkarimi/usie.git && cd usie`
+4. `fly apps create usie-f52a60d5` — the name must match `fly.toml` and the
+   rewrite in `apps/web/vercel.json`.
+5. `fly volumes create usie_data --region iad --size 10` (accept the
+   single-volume warning).
+6. `fly deploy --remote-only` (the first build compiles the Rust engine and
+   takes a while).
+7. `fly machine list` must show exactly one machine; otherwise
+   `fly scale count 1`.
+8. `curl https://usie-f52a60d5.fly.dev/readyz` should return
+   `{"status":"ready"}`; use `fly logs` if not.
+9. Immediately create the first account at https://usie-eight.vercel.app:
+   in `first-user` mode the first registration becomes the owner.
+
 ## Frontend (Vercel)
 
 A Vercel project with root directory `apps/web` uses `apps/web/vercel.json`:
