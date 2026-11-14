@@ -1,6 +1,8 @@
 //! Python extraction adapter (tree-sitter-python).
 
-use crate::common::{children, named_children, span, Builder, Cx, Extracted, Limits, Target, MAX_DEPTH};
+use crate::common::{
+    children, named_children, span, Builder, Cx, Extracted, Limits, Target, MAX_DEPTH,
+};
 use tree_sitter::Node;
 use usie_ir::{Export, ExportKind, Import, ImportKind, ReferenceKind, SymbolKind};
 
@@ -51,7 +53,10 @@ impl<'a> Py<'a> {
                     if node.kind() == "assignment" {
                         self.bind_targets(left, cx, node);
                     }
-                    if cx.scope.is_none() && left.kind() == "identifier" && self.b.text(left) == "__all__" {
+                    if cx.scope.is_none()
+                        && left.kind() == "identifier"
+                        && self.b.text(left) == "__all__"
+                    {
                         if let Some(right) = right {
                             self.dunder_all(right);
                         }
@@ -192,7 +197,10 @@ impl<'a> Py<'a> {
         };
         let name = self.b.text(name_node);
         self.b.add_local(cx.fn_scope, &name);
-        let Some(id) = self.b.define(SymbolKind::Class, name, cx.scope, node, name_node) else {
+        let Some(id) = self
+            .b
+            .define(SymbolKind::Class, name, cx.scope, node, name_node)
+        else {
             return;
         };
 
@@ -400,14 +408,18 @@ impl<'a> Py<'a> {
     fn dunder_all(&mut self, value: Node) {
         if !matches!(value.kind(), "list" | "tuple") {
             // Computed `__all__`: the export surface is not statically known.
-            self.b.attrs.insert("dunder_all_dynamic".into(), true.into());
+            self.b
+                .attrs
+                .insert("dunder_all_dynamic".into(), true.into());
             return;
         }
         self.b.attrs.insert("dunder_all".into(), true.into());
         for item in named_children(value) {
             if item.kind() != "string" {
                 if item.kind() != "comment" {
-                    self.b.attrs.insert("dunder_all_dynamic".into(), true.into());
+                    self.b
+                        .attrs
+                        .insert("dunder_all_dynamic".into(), true.into());
                 }
                 continue;
             }
@@ -479,7 +491,8 @@ impl<'a> Py<'a> {
                 .child_by_field_name("attribute")
                 .map(|n| self.b.text(n));
             // `super().method` — keep the receiver, it is statically meaningful.
-            if let (Some(obj), Some(member)) = (expr.child_by_field_name("object"), member.clone()) {
+            if let (Some(obj), Some(member)) = (expr.child_by_field_name("object"), member.clone())
+            {
                 if obj.kind() == "call" {
                     if let Some(f) = obj.child_by_field_name("function") {
                         if f.kind() == "identifier" && self.b.text(f) == "super" {
@@ -544,9 +557,18 @@ fn pattern_names<'t>(node: Node<'t>, out: &mut Vec<Node<'t>>, depth: u32) {
                 pattern_names(first, out, depth + 1);
             }
         }
-        "parameters" | "lambda_parameters" | "pattern_list" | "tuple_pattern" | "list_pattern"
-        | "list_splat_pattern" | "dictionary_splat_pattern" | "as_pattern_target"
-        | "parenthesized_expression" | "tuple" | "list" | "expression_list" => {
+        "parameters"
+        | "lambda_parameters"
+        | "pattern_list"
+        | "tuple_pattern"
+        | "list_pattern"
+        | "list_splat_pattern"
+        | "dictionary_splat_pattern"
+        | "as_pattern_target"
+        | "parenthesized_expression"
+        | "tuple"
+        | "list"
+        | "expression_list" => {
             for child in named_children(node) {
                 pattern_names(child, out, depth + 1);
             }

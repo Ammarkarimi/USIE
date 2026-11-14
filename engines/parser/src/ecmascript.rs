@@ -4,7 +4,9 @@
 //! supersets of the JavaScript one and differ only in a handful of node kinds
 //! (`class_heritage` layout, parameter wrappers, field definitions).
 
-use crate::common::{children, named_children, span, truncate, Builder, Cx, Extracted, Limits, Target, MAX_DEPTH};
+use crate::common::{
+    children, named_children, span, truncate, Builder, Cx, Extracted, Limits, Target, MAX_DEPTH,
+};
 use tree_sitter::Node;
 use usie_ir::{Export, ExportKind, Import, ImportKind, Language, ReferenceKind, SymbolKind};
 
@@ -36,8 +38,12 @@ impl<'a> Es<'a> {
         }
         match node.kind() {
             // Types carry no executable references.
-            "type_annotation" | "type_arguments" | "type_parameters" | "type_predicate_annotation"
-            | "asserts_annotation" | "comment" => {}
+            "type_annotation"
+            | "type_arguments"
+            | "type_parameters"
+            | "type_predicate_annotation"
+            | "asserts_annotation"
+            | "comment" => {}
             "export_statement" => self.export(node, cx, depth),
             "import_statement" => self.import(node, cx),
             "ambient_declaration" => self.walk_children(node, cx, depth),
@@ -65,7 +71,8 @@ impl<'a> Es<'a> {
             "new_expression" => {
                 if let Some(ctor) = node.child_by_field_name("constructor") {
                     let target = self.target(ctor);
-                    self.b.push_reference(ReferenceKind::New, cx, target, ctor, node);
+                    self.b
+                        .push_reference(ReferenceKind::New, cx, target, ctor, node);
                 }
                 self.walk_children(node, cx, depth);
             }
@@ -121,7 +128,13 @@ impl<'a> Es<'a> {
     // ---- declarations -----------------------------------------------------
 
     /// Declares a function symbol. `name_override` names anonymous default exports.
-    fn function_decl(&mut self, node: Node, cx: Cx, depth: u32, name_override: Option<&str>) -> Option<u32> {
+    fn function_decl(
+        &mut self,
+        node: Node,
+        cx: Cx,
+        depth: u32,
+        name_override: Option<&str>,
+    ) -> Option<u32> {
         let name_node = node.child_by_field_name("name");
         let name = match (name_node, name_override) {
             (Some(n), _) => self.b.text(n),
@@ -149,11 +162,18 @@ impl<'a> Es<'a> {
             }
             None => {
                 self.bind_name(cx, &name);
-                let id = self
-                    .b
-                    .define(SymbolKind::Function, name, cx.scope, node, name_node.unwrap_or(node))?;
+                let id = self.b.define(
+                    SymbolKind::Function,
+                    name,
+                    cx.scope,
+                    node,
+                    name_node.unwrap_or(node),
+                )?;
                 if cx.anon && cx.scope.is_none() {
-                    self.b.sym(id).attrs.insert("in_anonymous_scope".into(), true.into());
+                    self.b
+                        .sym(id)
+                        .attrs
+                        .insert("in_anonymous_scope".into(), true.into());
                 }
                 id
             }
@@ -178,7 +198,11 @@ impl<'a> Es<'a> {
                 sym.attrs.insert("generator".into(), true.into());
             }
             if !has_body {
-                let n = sym.attrs.get("overloads").and_then(|v| v.as_u64()).unwrap_or(0);
+                let n = sym
+                    .attrs
+                    .get("overloads")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
                 sym.attrs.insert("overloads".into(), (n + 1).into());
                 sym.attrs.insert("declaration_only".into(), true.into());
             }
@@ -208,7 +232,13 @@ impl<'a> Es<'a> {
         }
     }
 
-    fn class(&mut self, node: Node, cx: Cx, depth: u32, name_override: Option<&str>) -> Option<u32> {
+    fn class(
+        &mut self,
+        node: Node,
+        cx: Cx,
+        depth: u32,
+        name_override: Option<&str>,
+    ) -> Option<u32> {
         let name_node = node.child_by_field_name("name");
         let name = match (name_node, name_override) {
             (Some(n), _) => self.b.text(n),
@@ -219,9 +249,13 @@ impl<'a> Es<'a> {
             }
         };
         self.bind_name(cx, &name);
-        let id = self
-            .b
-            .define(SymbolKind::Class, name, cx.scope, node, name_node.unwrap_or(node))?;
+        let id = self.b.define(
+            SymbolKind::Class,
+            name,
+            cx.scope,
+            node,
+            name_node.unwrap_or(node),
+        )?;
         let doc = self.jsdoc(node);
         let is_abstract = node.kind() == "abstract_class_declaration";
         {
@@ -242,7 +276,10 @@ impl<'a> Es<'a> {
 
     /// Heritage, decorators and body of a class node already declared as `id`.
     fn class_parts(&mut self, node: Node, id: u32, cx: Cx, depth: u32) {
-        let outer = Cx { exported: false, ..cx };
+        let outer = Cx {
+            exported: false,
+            ..cx
+        };
         let mut decorators = Vec::new();
         for child in children(node) {
             match child.kind() {
@@ -257,7 +294,10 @@ impl<'a> Es<'a> {
             }
         }
         if !decorators.is_empty() {
-            self.b.sym(id).attrs.insert("decorators".into(), decorators.into());
+            self.b
+                .sym(id)
+                .attrs
+                .insert("decorators".into(), decorators.into());
         }
         if let Some(body) = node.child_by_field_name("body") {
             let inner = Cx {
@@ -277,7 +317,9 @@ impl<'a> Es<'a> {
                 "extends_clause" => {
                     plain_js = false;
                     let mut cursor = clause.walk();
-                    let values: Vec<Node> = clause.children_by_field_name("value", &mut cursor).collect();
+                    let values: Vec<Node> = clause
+                        .children_by_field_name("value", &mut cursor)
+                        .collect();
                     for value in values {
                         let segments = self.dotted(value).unwrap_or_default();
                         let base = self.b.name_path(value, segments);
@@ -316,7 +358,10 @@ impl<'a> Es<'a> {
         let id = match self.b.find_child(cx.scope, &name, SymbolKind::Interface) {
             Some(id) => id,
             None => {
-                let Some(id) = self.b.define(SymbolKind::Interface, name, cx.scope, node, name_node) else {
+                let Some(id) =
+                    self.b
+                        .define(SymbolKind::Interface, name, cx.scope, node, name_node)
+                else {
                     return;
                 };
                 id
@@ -363,7 +408,10 @@ impl<'a> Es<'a> {
             // Enums are values as well as types.
             self.bind_name(cx, &name);
         }
-        if let Some(id) = self.b.define(SymbolKind::Type, name, cx.scope, node, name_node) {
+        if let Some(id) = self
+            .b
+            .define(SymbolKind::Type, name, cx.scope, node, name_node)
+        {
             let doc = self.jsdoc(node);
             let sym = self.b.sym(id);
             sym.exported = cx.exported;
@@ -386,7 +434,10 @@ impl<'a> Es<'a> {
         let id = match self.b.find_child(cx.scope, &name, SymbolKind::Namespace) {
             Some(id) => id,
             None => {
-                let Some(id) = self.b.define(SymbolKind::Namespace, name, cx.scope, node, name_node) else {
+                let Some(id) =
+                    self.b
+                        .define(SymbolKind::Namespace, name, cx.scope, node, name_node)
+                else {
                     return;
                 };
                 id
@@ -413,13 +464,19 @@ impl<'a> Es<'a> {
     fn method(&mut self, node: Node, cx: Cx, depth: u32) {
         let owner_ok = cx
             .scope
-            .map(|s| matches!(self.b.symbols[s as usize].kind, SymbolKind::Class | SymbolKind::Interface))
+            .map(|s| {
+                matches!(
+                    self.b.symbols[s as usize].kind,
+                    SymbolKind::Class | SymbolKind::Interface
+                )
+            })
             .unwrap_or(false);
         let parent_kind = node.parent().map(|p| p.kind()).unwrap_or("");
         let in_type_body = matches!(parent_kind, "class_body" | "interface_body" | "object_type");
         let name_node = node.child_by_field_name("name");
         let name = name_node.and_then(|n| self.member_name(n));
-        let (Some(name_node), Some(name), true, true) = (name_node, name, owner_ok, in_type_body) else {
+        let (Some(name_node), Some(name), true, true) = (name_node, name, owner_ok, in_type_body)
+        else {
             // Object-literal methods and computed names: no symbol, but the
             // body is still a function scope of its own.
             self.anonymous_function(node, cx, depth);
@@ -429,7 +486,11 @@ impl<'a> Es<'a> {
         let existing = self
             .b
             .find_child(cx.scope, &name, SymbolKind::Method)
-            .filter(|id| self.b.symbols[*id as usize].attrs.contains_key("declaration_only"));
+            .filter(|id| {
+                self.b.symbols[*id as usize]
+                    .attrs
+                    .contains_key("declaration_only")
+            });
         let id = match existing {
             Some(id) => {
                 if has_body {
@@ -441,7 +502,10 @@ impl<'a> Es<'a> {
                 id
             }
             None => {
-                let Some(id) = self.b.define(SymbolKind::Method, name, cx.scope, node, name_node) else {
+                let Some(id) = self
+                    .b
+                    .define(SymbolKind::Method, name, cx.scope, node, name_node)
+                else {
                     return;
                 };
                 id
@@ -509,7 +573,10 @@ impl<'a> Es<'a> {
     }
 
     fn field(&mut self, node: Node, cx: Cx, depth: u32) {
-        let in_class = node.parent().map(|p| p.kind() == "class_body").unwrap_or(false)
+        let in_class = node
+            .parent()
+            .map(|p| p.kind() == "class_body")
+            .unwrap_or(false)
             && cx
                 .scope
                 .map(|s| self.b.symbols[s as usize].kind == SymbolKind::Class)
@@ -571,7 +638,11 @@ impl<'a> Es<'a> {
 
     fn variables(&mut self, node: Node, cx: Cx, depth: u32) {
         let parent_kind = node.parent().map(|p| p.kind()).unwrap_or("");
-        let grand_kind = node.parent().and_then(|p| p.parent()).map(|p| p.kind()).unwrap_or("");
+        let grand_kind = node
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.kind())
+            .unwrap_or("");
         let is_namespace_scope = cx
             .scope
             .map(|s| self.b.symbols[s as usize].kind == SymbolKind::Namespace)
@@ -580,9 +651,13 @@ impl<'a> Es<'a> {
         let top_level = cx.fn_scope.is_none()
             && !cx.anon
             && (cx.scope.is_none() || is_namespace_scope)
-            && (matches!(parent_kind, "program" | "export_statement" | "ambient_declaration")
-                || (is_namespace_scope && parent_kind == "statement_block"))
-            && !(parent_kind == "export_statement" && grand_kind == "statement_block" && !is_namespace_scope);
+            && (matches!(
+                parent_kind,
+                "program" | "export_statement" | "ambient_declaration"
+            ) || (is_namespace_scope && parent_kind == "statement_block"))
+            && !(parent_kind == "export_statement"
+                && grand_kind == "statement_block"
+                && !is_namespace_scope);
         let decl_kind = children(node)
             .iter()
             .find(|c| matches!(c.kind(), "const" | "let" | "var"))
@@ -673,7 +748,15 @@ impl<'a> Es<'a> {
             if let Some(f) = function_value {
                 self.function_body(f, id, cx, depth + 1);
             } else if let Some(c) = class_value {
-                self.class_parts(c, id, Cx { exported: false, ..cx }, depth + 1);
+                self.class_parts(
+                    c,
+                    id,
+                    Cx {
+                        exported: false,
+                        ..cx
+                    },
+                    depth + 1,
+                );
             } else if let Some(v) = value {
                 let inner = Cx {
                     scope: Some(id),
@@ -691,7 +774,11 @@ impl<'a> Es<'a> {
         let inner = if cx.fn_scope.is_some() {
             cx
         } else {
-            Cx { anon: true, exported: false, ..cx }
+            Cx {
+                anon: true,
+                exported: false,
+                ..cx
+            }
         };
         if node.kind() == "function_expression" {
             if let Some(name) = node.child_by_field_name("name") {
@@ -715,7 +802,11 @@ impl<'a> Es<'a> {
         let inner = if cx.fn_scope.is_some() {
             cx
         } else {
-            Cx { anon: true, exported: false, ..cx }
+            Cx {
+                anon: true,
+                exported: false,
+                ..cx
+            }
         };
         if let Some(name) = node.child_by_field_name("name") {
             self.bind_pattern(name, inner);
@@ -732,7 +823,9 @@ impl<'a> Es<'a> {
     // ---- imports / exports ------------------------------------------------
 
     fn import(&mut self, node: Node, cx: Cx) {
-        let type_only = children(node).iter().any(|c| c.kind() == "type" || c.kind() == "typeof");
+        let type_only = children(node)
+            .iter()
+            .any(|c| c.kind() == "type" || c.kind() == "typeof");
         let scope = cx.fn_scope.or(cx.scope);
 
         // TypeScript `import x = require("m")`.
@@ -770,7 +863,9 @@ impl<'a> Es<'a> {
         if module.is_empty() {
             return;
         }
-        let clause = named_children(node).into_iter().find(|c| c.kind() == "import_clause");
+        let clause = named_children(node)
+            .into_iter()
+            .find(|c| c.kind() == "import_clause");
         let Some(clause) = clause else {
             self.b.push_import(Import {
                 module,
@@ -860,7 +955,9 @@ impl<'a> Es<'a> {
         // Only module-level exports form the module's export surface; exports
         // inside a namespace mark the member as exported from the namespace.
         let module_level = cx.scope.is_none() && !cx.anon;
-        let source = node.child_by_field_name("source").map(|s| self.string_value(s));
+        let source = node
+            .child_by_field_name("source")
+            .map(|s| self.string_value(s));
         let kids = children(node);
         let is_default = kids.iter().any(|c| c.kind() == "default");
 
@@ -903,12 +1000,17 @@ impl<'a> Es<'a> {
             return;
         }
 
-        let inner = Cx { exported: true, ..cx };
+        let inner = Cx {
+            exported: true,
+            ..cx
+        };
         if let Some(decl) = node.child_by_field_name("declaration") {
             let before = self.b.symbols.len();
             let override_name = if is_default { Some("default") } else { None };
             let default_local = match decl.kind() {
-                "function_declaration" | "generator_function_declaration" | "function_signature" => self
+                "function_declaration"
+                | "generator_function_declaration"
+                | "function_signature" => self
                     .function_decl(decl, inner, depth + 1, override_name)
                     .map(|id| self.b.symbols[id as usize].name.clone()),
                 "class_declaration" | "abstract_class_declaration" => self
@@ -945,7 +1047,12 @@ impl<'a> Es<'a> {
             }
             for name in names {
                 // Overloads and merged declarations export one name once.
-                if self.b.exports.iter().any(|e| e.source.is_none() && e.name == name) {
+                if self
+                    .b
+                    .exports
+                    .iter()
+                    .any(|e| e.source.is_none() && e.name == name)
+                {
                     continue;
                 }
                 self.b.exports.push(Export {
@@ -964,7 +1071,10 @@ impl<'a> Es<'a> {
             let local = match value.kind() {
                 "identifier" => Some(self.b.text(value)),
                 "arrow_function" | "function_expression" | "generator_function" if module_level => {
-                    match self.b.define(SymbolKind::Function, "default".into(), None, value, value) {
+                    match self
+                        .b
+                        .define(SymbolKind::Function, "default".into(), None, value, value)
+                    {
                         Some(id) => {
                             let signature = self.signature(value);
                             let sym = self.b.sym(id);
@@ -977,7 +1087,10 @@ impl<'a> Es<'a> {
                     }
                 }
                 "class" if module_level => {
-                    match self.b.define(SymbolKind::Class, "default".into(), None, value, value) {
+                    match self
+                        .b
+                        .define(SymbolKind::Class, "default".into(), None, value, value)
+                    {
                         Some(id) => {
                             self.b.sym(id).exported = true;
                             self.class_parts(value, id, cx, depth + 1);
@@ -1090,7 +1203,10 @@ impl<'a> Es<'a> {
 
     /// `module.exports = …`, `module.exports.x = …`, `exports.x = …`.
     fn commonjs_export(&mut self, node: Node) {
-        let (Some(left), Some(right)) = (node.child_by_field_name("left"), node.child_by_field_name("right")) else {
+        let (Some(left), Some(right)) = (
+            node.child_by_field_name("left"),
+            node.child_by_field_name("right"),
+        ) else {
             return;
         };
         let Some(path) = self.dotted(left) else {
@@ -1104,7 +1220,12 @@ impl<'a> Es<'a> {
         };
         self.b.attrs.insert("commonjs".into(), true.into());
         if let Some(name) = &member {
-            if self.b.exports.iter().any(|e| e.source.is_none() && &e.name == name) {
+            if self
+                .b
+                .exports
+                .iter()
+                .any(|e| e.source.is_none() && &e.name == name)
+            {
                 return;
             }
         }
@@ -1138,7 +1259,9 @@ impl<'a> Es<'a> {
                             (name, local)
                         }
                         "method_definition" => {
-                            let Some(name) = prop.child_by_field_name("name").and_then(|n| self.member_name(n))
+                            let Some(name) = prop
+                                .child_by_field_name("name")
+                                .and_then(|n| self.member_name(n))
                             else {
                                 continue;
                             };
@@ -1146,7 +1269,12 @@ impl<'a> Es<'a> {
                         }
                         _ => continue,
                     };
-                    if self.b.exports.iter().any(|e| e.source.is_none() && e.name == name) {
+                    if self
+                        .b
+                        .exports
+                        .iter()
+                        .any(|e| e.source.is_none() && e.name == name)
+                    {
                         continue;
                     }
                     self.b.exports.push(Export {
@@ -1194,8 +1322,15 @@ impl<'a> Es<'a> {
                     span: span(node),
                 }),
                 _ => {
-                    let n = self.b.attrs.get("dynamic_imports_unresolved").and_then(|v| v.as_u64()).unwrap_or(0);
-                    self.b.attrs.insert("dynamic_imports_unresolved".into(), (n + 1).into());
+                    let n = self
+                        .b
+                        .attrs
+                        .get("dynamic_imports_unresolved")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    self.b
+                        .attrs
+                        .insert("dynamic_imports_unresolved".into(), (n + 1).into());
                 }
             }
             if let Some(a) = args {
@@ -1219,7 +1354,8 @@ impl<'a> Es<'a> {
             return;
         }
         let target = self.target(callee);
-        self.b.push_reference(ReferenceKind::Call, cx, target, callee, node);
+        self.b
+            .push_reference(ReferenceKind::Call, cx, target, callee, node);
         self.walk_children(node, cx, depth);
     }
 
@@ -1228,10 +1364,18 @@ impl<'a> Es<'a> {
             "identifier" => {
                 let text = self.b.text(name);
                 // Lowercase tags are host elements, not component references.
-                if !text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if !text
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
                     return;
                 }
-                Target { path: vec![text], member: None }
+                Target {
+                    path: vec![text],
+                    member: None,
+                }
             }
             "member_expression" | "nested_identifier" => {
                 let text = self.b.text(name);
@@ -1243,7 +1387,8 @@ impl<'a> Es<'a> {
             }
             _ => return,
         };
-        self.b.push_reference(ReferenceKind::Jsx, cx, target, name, name);
+        self.b
+            .push_reference(ReferenceKind::Jsx, cx, target, name, name);
     }
 
     /// The module of a `require("literal")` call expression.
@@ -1293,8 +1438,12 @@ impl<'a> Es<'a> {
                             (n.clone(), n)
                         }
                         "pair_pattern" => {
-                            let key = prop.child_by_field_name("key").and_then(|k| self.member_name(k));
-                            let value = prop.child_by_field_name("value").filter(|v| v.kind() == "identifier");
+                            let key = prop
+                                .child_by_field_name("key")
+                                .and_then(|k| self.member_name(k));
+                            let value = prop
+                                .child_by_field_name("value")
+                                .filter(|v| v.kind() == "identifier");
                             match (key, value) {
                                 (Some(k), Some(v)) => (k, self.b.text(v)),
                                 _ => {
@@ -1375,7 +1524,10 @@ impl<'a> Es<'a> {
                 }
                 "member_expression" => {
                     let prop = current.child_by_field_name("property")?;
-                    if !matches!(prop.kind(), "property_identifier" | "private_property_identifier") {
+                    if !matches!(
+                        prop.kind(),
+                        "property_identifier" | "private_property_identifier"
+                    ) {
                         return None;
                     }
                     segments.push(self.b.text(prop));
@@ -1403,14 +1555,20 @@ impl<'a> Es<'a> {
                 let segs: Vec<String> = text.split('.').map(|s| s.trim().to_string()).collect();
                 (!segs.iter().any(|s| s.is_empty())).then_some(segs)
             }
-            "generic_type" => self.type_name(ty.child_by_field_name("name").or_else(|| ty.named_child(0))?),
+            "generic_type" => self.type_name(
+                ty.child_by_field_name("name")
+                    .or_else(|| ty.named_child(0))?,
+            ),
             _ => None,
         }
     }
 
     fn target(&self, expr: Node) -> Target {
         let mut expr = expr;
-        while matches!(expr.kind(), "parenthesized_expression" | "non_null_expression") {
+        while matches!(
+            expr.kind(),
+            "parenthesized_expression" | "non_null_expression"
+        ) {
             match expr.named_child(0) {
                 Some(inner) => expr = inner,
                 None => break,
@@ -1422,9 +1580,17 @@ impl<'a> Es<'a> {
         if expr.kind() == "member_expression" {
             let member = expr
                 .child_by_field_name("property")
-                .filter(|p| matches!(p.kind(), "property_identifier" | "private_property_identifier"))
+                .filter(|p| {
+                    matches!(
+                        p.kind(),
+                        "property_identifier" | "private_property_identifier"
+                    )
+                })
                 .map(|p| self.b.text(p));
-            return Target { path: Vec::new(), member };
+            return Target {
+                path: Vec::new(),
+                member,
+            };
         }
         Target::default()
     }
@@ -1487,7 +1653,10 @@ impl<'a> Es<'a> {
         // The comment precedes the outermost statement wrapper.
         while let Some(parent) = anchor.parent() {
             if matches!(parent.kind(), "export_statement" | "ambient_declaration")
-                || (matches!(parent.kind(), "lexical_declaration" | "variable_declaration"))
+                || (matches!(
+                    parent.kind(),
+                    "lexical_declaration" | "variable_declaration"
+                ))
             {
                 anchor = parent;
             } else {
@@ -1512,7 +1681,10 @@ impl<'a> Es<'a> {
 }
 
 fn is_function_value(node: Node) -> bool {
-    matches!(node.kind(), "arrow_function" | "function_expression" | "generator_function")
+    matches!(
+        node.kind(),
+        "arrow_function" | "function_expression" | "generator_function"
+    )
 }
 
 /// Collect the identifier nodes bound by a declaration or parameter pattern.

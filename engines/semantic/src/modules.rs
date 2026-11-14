@@ -8,7 +8,9 @@ use crate::{FileIx, Found, Miss, Res, Resolver, Target};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use usie_ir::{Confidence, LanguageFamily};
 
-const ES_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".d.ts", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+const ES_EXTENSIONS: &[&str] = &[
+    ".ts", ".tsx", ".d.ts", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",
+];
 /// TypeScript sources are imported by their emitted JavaScript names.
 const ES_OUTPUT_TO_SOURCE: &[(&str, &[&str])] = &[
     (".js", &[".ts", ".tsx", ".d.ts"]),
@@ -42,18 +44,33 @@ pub(crate) struct ModuleIndex<'a> {
 
 impl<'a> ModuleIndex<'a> {
     pub(crate) fn new(config: &'a ProjectConfig, files: &[FileIx<'a>]) -> Self {
-        let by_path: HashMap<&str, usize> = files.iter().enumerate().map(|(i, f)| (f.path, i)).collect();
+        let by_path: HashMap<&str, usize> =
+            files.iter().enumerate().map(|(i, f)| (f.path, i)).collect();
         let mut all_paths: HashSet<&str> = config.paths.iter().map(String::as_str).collect();
         all_paths.extend(files.iter().map(|f| f.path));
-        let python_roots: Vec<String> = config.python_roots.iter().map(|r| r.trim_matches('/').to_string()).collect();
+        let python_roots: Vec<String> = config
+            .python_roots
+            .iter()
+            .map(|r| r.trim_matches('/').to_string())
+            .collect();
 
         let mut index = ModuleIndex {
             by_path,
             all_paths,
             tsconfigs: &config.tsconfigs,
             packages: &config.packages,
-            npm_deps: config.dependencies.iter().filter(|d| d.ecosystem == "npm").map(|d| d.name.as_str()).collect(),
-            pypi_deps: config.dependencies.iter().filter(|d| d.ecosystem == "pypi").map(|d| normalize_pypi(&d.name)).collect(),
+            npm_deps: config
+                .dependencies
+                .iter()
+                .filter(|d| d.ecosystem == "npm")
+                .map(|d| d.name.as_str())
+                .collect(),
+            pypi_deps: config
+                .dependencies
+                .iter()
+                .filter(|d| d.ecosystem == "pypi")
+                .map(|d| normalize_pypi(&d.name))
+                .collect(),
             python_roots,
             py_modules: HashMap::new(),
             py_top_level: HashSet::new(),
@@ -92,12 +109,18 @@ impl<'a> ModuleIndex<'a> {
                     self.py_top_level.insert(top.to_string());
                 }
             }
-            self.py_modules.entry(name).or_default().push(PyModule { file, root, proper });
+            self.py_modules
+                .entry(name)
+                .or_default()
+                .push(PyModule { file, root, proper });
         }
     }
 
     fn is_package_dir(&self, dir: &str) -> bool {
-        PY_EXTENSIONS.iter().any(|ext| self.all_paths.contains(format!("{dir}/__init__{ext}").as_str()))
+        PY_EXTENSIONS.iter().any(|ext| {
+            self.all_paths
+                .contains(format!("{dir}/__init__{ext}").as_str())
+        })
     }
 
     /// The module or package `name` located directly in `dir`.
@@ -124,7 +147,11 @@ impl<'a> ModuleIndex<'a> {
         };
         let from_root = self.py_root_of.get(&from).map(String::as_str).unwrap_or("");
         let on_path = |m: &PyModule| {
-            m.proper && (m.root == from_root || m.root.is_empty() || m.root == "src" || self.python_roots.contains(&m.root))
+            m.proper
+                && (m.root == from_root
+                    || m.root.is_empty()
+                    || m.root == "src"
+                    || self.python_roots.contains(&m.root))
         };
         type Accept<'f> = Box<dyn Fn(&PyModule) -> bool + 'f>;
         let tiers: [(Accept<'_>, Confidence); 3] = [
@@ -133,7 +160,11 @@ impl<'a> ModuleIndex<'a> {
             (Box::new(|_: &PyModule| true), Confidence::Probable),
         ];
         for (accept, confidence) in tiers {
-            let mut files: Vec<usize> = candidates.iter().filter(|m| accept(m)).map(|m| m.file).collect();
+            let mut files: Vec<usize> = candidates
+                .iter()
+                .filter(|m| accept(m))
+                .map(|m| m.file)
+                .collect();
             files.sort_unstable();
             files.dedup();
             match files.len() {
@@ -151,7 +182,9 @@ impl<'a> ModuleIndex<'a> {
             if let Some(&f) = self.by_path.get(candidate) {
                 return Some(Target::File(f));
             }
-            self.all_paths.get(candidate).map(|p| Target::Asset((*p).to_string()))
+            self.all_paths
+                .get(candidate)
+                .map(|p| Target::Asset((*p).to_string()))
         };
         if !base.is_empty() {
             if let Some(t) = hit(base) {
@@ -173,7 +206,11 @@ impl<'a> ModuleIndex<'a> {
             }
         }
         for ext in ES_EXTENSIONS {
-            let candidate = if base.is_empty() { format!("index{ext}") } else { format!("{base}/index{ext}") };
+            let candidate = if base.is_empty() {
+                format!("index{ext}")
+            } else {
+                format!("{base}/index{ext}")
+            };
             if let Some(t) = hit(&candidate) {
                 return Some(t);
             }
@@ -190,28 +227,42 @@ impl<'a> ModuleIndex<'a> {
 }
 
 impl<'a> Resolver<'a> {
-    fn external(&self, ecosystem: &str, name: &str, attrs: &[(&str, bool)], confidence: Confidence, rule: &'static str) -> Found {
+    fn external(
+        &self,
+        ecosystem: &str,
+        name: &str,
+        attrs: &[(&str, bool)],
+        confidence: Confidence,
+        rule: &'static str,
+    ) -> Found {
         let key = format!("ext:{ecosystem}:{name}");
-        self.externals.borrow_mut().entry(key.clone()).or_insert_with(|| {
-            let mut map = BTreeMap::new();
-            map.insert("ecosystem".to_string(), ecosystem.into());
-            for (k, v) in attrs {
-                map.insert((*k).to_string(), (*v).into());
-            }
-            NodeRecord {
-                key: key.clone(),
-                kind: "package".into(),
-                name: name.to_string(),
-                qualified_name: None,
-                path: None,
-                span: None,
-                signature: None,
-                doc: None,
-                exported: false,
-                attrs: map,
-            }
-        });
-        Found { target: Target::External(key), confidence, rule }
+        self.externals
+            .borrow_mut()
+            .entry(key.clone())
+            .or_insert_with(|| {
+                let mut map = BTreeMap::new();
+                map.insert("ecosystem".to_string(), ecosystem.into());
+                for (k, v) in attrs {
+                    map.insert((*k).to_string(), (*v).into());
+                }
+                NodeRecord {
+                    key: key.clone(),
+                    kind: "package".into(),
+                    name: name.to_string(),
+                    qualified_name: None,
+                    path: None,
+                    span: None,
+                    signature: None,
+                    doc: None,
+                    exported: false,
+                    attrs: map,
+                }
+            });
+        Found {
+            target: Target::External(key),
+            confidence,
+            rule,
+        }
     }
 
     /// Resolve an ECMAScript import specifier.
@@ -220,19 +271,38 @@ impl<'a> Resolver<'a> {
         let dir = self.files[from].dir;
         if spec.starts_with("./") || spec.starts_with("../") || spec == "." || spec == ".." {
             let Some(base) = paths::join(dir, spec) else {
-                return Err(Miss::new("es.import.relative", format!("`{spec}` points outside the repository")));
+                return Err(Miss::new(
+                    "es.import.relative",
+                    format!("`{spec}` points outside the repository"),
+                ));
             };
             return match m.es_file(&base) {
-                Some(target) => Ok(Found { target, confidence: Confidence::Confirmed, rule: "es.import.relative" }),
-                None => Err(Miss::new("es.import.relative", format!("no file in the repository matches `{spec}`"))),
+                Some(target) => Ok(Found {
+                    target,
+                    confidence: Confidence::Confirmed,
+                    rule: "es.import.relative",
+                }),
+                None => Err(Miss::new(
+                    "es.import.relative",
+                    format!("no file in the repository matches `{spec}`"),
+                )),
             };
         }
         if spec.starts_with('/') {
-            return Err(Miss::new("es.import.absolute", format!("absolute specifier `{spec}` depends on the host or bundler")));
+            return Err(Miss::new(
+                "es.import.absolute",
+                format!("absolute specifier `{spec}` depends on the host or bundler"),
+            ));
         }
         if let Some(name) = spec.strip_prefix("node:") {
             let name = name.split('/').next().unwrap_or(name);
-            return Ok(self.external("node", name, &[("builtin", true)], Confidence::Confirmed, "es.import.node-builtin"));
+            return Ok(self.external(
+                "node",
+                name,
+                &[("builtin", true)],
+                Confidence::Confirmed,
+                "es.import.node-builtin",
+            ));
         }
 
         if let Some(ts) = m.nearest_tsconfig(dir) {
@@ -260,20 +330,36 @@ impl<'a> Resolver<'a> {
                 if let Some((_, substitutions, capture)) = best {
                     for substitution in substitutions {
                         let candidate = substitution.replacen('*', capture, 1);
-                        if let Some(target) = paths::join(base_dir, &candidate).and_then(|p| m.es_file(&p)) {
-                            return Ok(Found { target, confidence: Confidence::Confirmed, rule: "es.import.tsconfig-paths" });
+                        if let Some(target) =
+                            paths::join(base_dir, &candidate).and_then(|p| m.es_file(&p))
+                        {
+                            return Ok(Found {
+                                target,
+                                confidence: Confidence::Confirmed,
+                                rule: "es.import.tsconfig-paths",
+                            });
                         }
                     }
                     return Err(Miss::new(
                         "es.import.tsconfig-paths",
-                        format!("`{spec}` matches a tsconfig path mapping but no mapped file exists"),
+                        format!(
+                            "`{spec}` matches a tsconfig path mapping but no mapped file exists"
+                        ),
                     ));
                 }
             }
             if ts.base_url.is_some() {
-                if let Some(target) = base_dir.as_deref().and_then(|b| paths::join(b, spec)).and_then(|p| m.es_file(&p)) {
+                if let Some(target) = base_dir
+                    .as_deref()
+                    .and_then(|b| paths::join(b, spec))
+                    .and_then(|p| m.es_file(&p))
+                {
                     // A package of the same name in node_modules could shadow this.
-                    return Ok(Found { target, confidence: Confidence::Probable, rule: "es.import.tsconfig-baseurl" });
+                    return Ok(Found {
+                        target,
+                        confidence: Confidence::Probable,
+                        rule: "es.import.tsconfig-baseurl",
+                    });
                 }
             }
         }
@@ -281,7 +367,11 @@ impl<'a> Resolver<'a> {
         let package = m
             .packages
             .iter()
-            .filter(|p| spec == p.name || (spec.starts_with(p.name.as_str()) && spec.as_bytes().get(p.name.len()) == Some(&b'/')))
+            .filter(|p| {
+                spec == p.name
+                    || (spec.starts_with(p.name.as_str())
+                        && spec.as_bytes().get(p.name.len()) == Some(&b'/'))
+            })
             .max_by_key(|p| p.name.len());
         if let Some(package) = package {
             let sub = spec[package.name.len()..].trim_start_matches('/');
@@ -295,29 +385,59 @@ impl<'a> Resolver<'a> {
                 candidates.push(format!("src/{sub}"));
             }
             for candidate in candidates {
-                if let Some(target) = paths::join(&package.dir, &candidate).and_then(|p| m.es_file(&p)) {
+                if let Some(target) =
+                    paths::join(&package.dir, &candidate).and_then(|p| m.es_file(&p))
+                {
                     // Package `exports` maps and build output are not modelled.
-                    return Ok(Found { target, confidence: Confidence::Probable, rule: "es.import.workspace-package" });
+                    return Ok(Found {
+                        target,
+                        confidence: Confidence::Probable,
+                        rule: "es.import.workspace-package",
+                    });
                 }
             }
             return Err(Miss::new(
                 "es.import.workspace-package",
-                format!("`{spec}` names workspace package `{}` but no entry file was found", package.name),
+                format!(
+                    "`{spec}` names workspace package `{}` but no entry file was found",
+                    package.name
+                ),
             ));
         }
 
         let name = npm_package_name(spec);
         if name.is_empty() {
-            return Err(Miss::new("es.import.invalid", format!("`{spec}` is not a valid module specifier")));
+            return Err(Miss::new(
+                "es.import.invalid",
+                format!("`{spec}` is not a valid module specifier"),
+            ));
         }
         if m.npm_deps.contains(name) {
-            return Ok(self.external("npm", name, &[("declared", true)], Confidence::Confirmed, "es.import.declared-dependency"));
+            return Ok(self.external(
+                "npm",
+                name,
+                &[("declared", true)],
+                Confidence::Confirmed,
+                "es.import.declared-dependency",
+            ));
         }
         if builtins::is_node_builtin(name) {
-            return Ok(self.external("node", name, &[("builtin", true)], Confidence::Confirmed, "es.import.node-builtin"));
+            return Ok(self.external(
+                "node",
+                name,
+                &[("builtin", true)],
+                Confidence::Confirmed,
+                "es.import.node-builtin",
+            ));
         }
         // Not in any manifest: likely a transitive or ambient package.
-        Ok(self.external("npm", name, &[("declared", false)], Confidence::Probable, "es.import.undeclared-package"))
+        Ok(self.external(
+            "npm",
+            name,
+            &[("declared", false)],
+            Confidence::Probable,
+            "es.import.undeclared-package",
+        ))
     }
 
     /// Resolve a Python module reference (`level` leading dots).
@@ -328,13 +448,22 @@ impl<'a> Resolver<'a> {
             for _ in 1..level {
                 match paths::parent(base) {
                     Some(p) => base = p,
-                    None => return Err(Miss::new("py.import.relative", "relative import goes above the repository root")),
+                    None => {
+                        return Err(Miss::new(
+                            "py.import.relative",
+                            "relative import goes above the repository root",
+                        ))
+                    }
                 }
             }
             let rel = module.replace('.', "/");
             let found = if rel.is_empty() {
                 PY_EXTENSIONS.iter().find_map(|ext| {
-                    let init = if base.is_empty() { format!("__init__{ext}") } else { format!("{base}/__init__{ext}") };
+                    let init = if base.is_empty() {
+                        format!("__init__{ext}")
+                    } else {
+                        format!("{base}/__init__{ext}")
+                    };
                     m.by_path.get(init.as_str()).copied()
                 })
             } else {
@@ -345,10 +474,18 @@ impl<'a> Resolver<'a> {
                 dir.and_then(|d| m.py_file_at(&d, name))
             };
             return match found {
-                Some(f) => Ok(Found { target: Target::File(f), confidence: Confidence::Confirmed, rule: "py.import.relative" }),
+                Some(f) => Ok(Found {
+                    target: Target::File(f),
+                    confidence: Confidence::Confirmed,
+                    rule: "py.import.relative",
+                }),
                 None => Err(Miss::new(
                     "py.import.relative",
-                    format!("no module `{}{module}` relative to `{}`", ".".repeat(level as usize), self.files[from].path),
+                    format!(
+                        "no module `{}{module}` relative to `{}`",
+                        ".".repeat(level as usize),
+                        self.files[from].path
+                    ),
                 )),
             };
         }
@@ -362,15 +499,28 @@ impl<'a> Resolver<'a> {
             // A repository module that is not on the importer's path does not
             // shadow the standard library.
             Ok(Some((file, confidence))) if !(stdlib && confidence != Confidence::Confirmed) => {
-                return Ok(Found { target: Target::File(file), confidence, rule: "py.import.absolute" });
+                return Ok(Found {
+                    target: Target::File(file),
+                    confidence,
+                    rule: "py.import.absolute",
+                });
             }
             Err(n) if !stdlib => {
-                return Err(Miss::new("py.import.absolute", format!("module `{module}` matches {n} files in the repository; ambiguous")));
+                return Err(Miss::new(
+                    "py.import.absolute",
+                    format!("module `{module}` matches {n} files in the repository; ambiguous"),
+                ));
             }
             _ => {}
         }
         if stdlib {
-            return Ok(self.external("python", top, &[("stdlib", true)], Confidence::Confirmed, "py.import.stdlib"));
+            return Ok(self.external(
+                "python",
+                top,
+                &[("stdlib", true)],
+                Confidence::Confirmed,
+                "py.import.stdlib",
+            ));
         }
         if m.py_top_level.contains(top) {
             return Err(Miss::new(
@@ -379,11 +529,23 @@ impl<'a> Resolver<'a> {
             ));
         }
         if m.pypi_deps.contains(&normalize_pypi(top)) {
-            return Ok(self.external("python", top, &[("declared", true)], Confidence::Confirmed, "py.import.declared-dependency"));
+            return Ok(self.external(
+                "python",
+                top,
+                &[("declared", true)],
+                Confidence::Confirmed,
+                "py.import.declared-dependency",
+            ));
         }
         // Distribution names often differ from import names (PyYAML → yaml),
         // so absence from the manifest is not evidence of an error.
-        Ok(self.external("python", top, &[("declared", false)], Confidence::Probable, "py.import.undeclared-module"))
+        Ok(self.external(
+            "python",
+            top,
+            &[("declared", false)],
+            Confidence::Probable,
+            "py.import.undeclared-module",
+        ))
     }
 }
 
@@ -435,7 +597,10 @@ mod tests {
     #[test]
     fn names() {
         assert_eq!(python_module_name("a/b/c.py").as_deref(), Some("a.b.c"));
-        assert_eq!(python_module_name("a/b/__init__.py").as_deref(), Some("a.b"));
+        assert_eq!(
+            python_module_name("a/b/__init__.py").as_deref(),
+            Some("a.b")
+        );
         assert_eq!(python_module_name("__init__.py"), None);
         assert_eq!(python_module_name("a/b.txt"), None);
         assert_eq!(npm_package_name("lodash/fp"), "lodash");

@@ -3,8 +3,8 @@
 use usie_ir::{Confidence, Language};
 use usie_parser::{parse, ParseOptions};
 use usie_semantic::{
-    resolve, DeclaredDependency, EdgeRecord, Outcome, Project, ProjectConfig, ReferenceRecord, Resolution, SourceFile,
-    TsConfig, WorkspacePackage,
+    resolve, DeclaredDependency, EdgeRecord, Outcome, Project, ProjectConfig, ReferenceRecord,
+    Resolution, SourceFile, TsConfig, WorkspacePackage,
 };
 
 fn language(path: &str) -> Option<Language> {
@@ -25,10 +25,16 @@ fn project(config: ProjectConfig, files: &[(&str, &str)]) -> Resolution {
         config.paths.push(path.to_string());
         if let Some(lang) = language(path) {
             let ir = parse(lang, src.as_bytes(), &ParseOptions::default()).unwrap();
-            sources.push(SourceFile { path: path.to_string(), ir });
+            sources.push(SourceFile {
+                path: path.to_string(),
+                ir,
+            });
         }
     }
-    resolve(&Project { config, files: sources })
+    resolve(&Project {
+        config,
+        files: sources,
+    })
 }
 
 fn edge<'a>(r: &'a Resolution, src: &str, kind: &str, dst: &str) -> &'a EdgeRecord {
@@ -47,7 +53,11 @@ fn edge<'a>(r: &'a Resolution, src: &str, kind: &str, dst: &str) -> &'a EdgeReco
 }
 
 fn no_edge(r: &Resolution, src: &str, kind: &str) {
-    let found: Vec<&EdgeRecord> = r.edges.iter().filter(|e| e.src == src && e.kind == kind).collect();
+    let found: Vec<&EdgeRecord> = r
+        .edges
+        .iter()
+        .filter(|e| e.src == src && e.kind == kind)
+        .collect();
     assert!(found.is_empty(), "unexpected edges: {found:#?}");
 }
 
@@ -91,35 +101,84 @@ fn typescript_imports_calls_and_reexports() {
     assert_eq!(calls.count, 3);
     check(calls, Confirmed, "es.export.wildcard");
     assert_eq!(calls.evidence.as_ref().unwrap().line, 11);
-    check(edge(&r, run, "CALLS", "sym:src/math.ts#mul"), Confirmed, "es.export.local");
+    check(
+        edge(&r, run, "CALLS", "sym:src/math.ts#mul"),
+        Confirmed,
+        "es.export.local",
+    );
 
-    check(edge(&r, run, "CALLS", "ext:npm:react"), Confirmed, "es.import.declared-dependency");
-    check(edge(&r, run, "CALLS", "ext:node:fs"), Confirmed, "es.import.node-builtin");
-    check(edge(&r, run, "CALLS", "ext:npm:lodash"), Probable, "es.import.undeclared-package");
+    check(
+        edge(&r, run, "CALLS", "ext:npm:react"),
+        Confirmed,
+        "es.import.declared-dependency",
+    );
+    check(
+        edge(&r, run, "CALLS", "ext:node:fs"),
+        Confirmed,
+        "es.import.node-builtin",
+    );
+    check(
+        edge(&r, run, "CALLS", "ext:npm:lodash"),
+        Probable,
+        "es.import.undeclared-package",
+    );
 
-    check(edge(&r, "file:src/app.ts", "IMPORTS", "file:src/index.ts"), Confirmed, "es.import.relative");
-    check(edge(&r, "file:src/app.ts", "IMPORTS", "file:src/math.ts"), Confirmed, "es.import.relative");
+    check(
+        edge(&r, "file:src/app.ts", "IMPORTS", "file:src/index.ts"),
+        Confirmed,
+        "es.import.relative",
+    );
+    check(
+        edge(&r, "file:src/app.ts", "IMPORTS", "file:src/math.ts"),
+        Confirmed,
+        "es.import.relative",
+    );
     edge(&r, "file:src/app.ts", "IMPORTS", "file:src/style.css");
     edge(&r, "file:src/index.ts", "IMPORTS", "file:src/math.ts");
     edge(&r, "file:src/math.ts", "EXPORTS", add);
-    check(edge(&r, "file:src/index.ts", "EXPORTS", add), Confirmed, "es.export.reexport");
+    check(
+        edge(&r, "file:src/index.ts", "EXPORTS", add),
+        Confirmed,
+        "es.export.reexport",
+    );
     edge(&r, "file:src/math.ts", "CONTAINS", add);
 
     // What cannot be established is reported, with a reason, and not guessed.
     let cb = reference(&r, "src/app.ts", "cb");
-    assert_eq!((cb.outcome, cb.rule.as_str()), (Outcome::Unresolved, "scope.local-binding"));
+    assert_eq!(
+        (cb.outcome, cb.rule.as_str()),
+        (Outcome::Unresolved, "scope.local-binding")
+    );
     let missing = reference(&r, "src/app.ts", "./missing");
-    assert_eq!((missing.outcome, missing.confidence), (Outcome::Unresolved, Confidence::Unknown));
+    assert_eq!(
+        (missing.outcome, missing.confidence),
+        (Outcome::Unresolved, Confidence::Unknown)
+    );
     assert!(missing.reason.as_ref().unwrap().contains("no file"));
-    assert_eq!(reference(&r, "src/app.ts", "gone").outcome, Outcome::Unresolved);
+    assert_eq!(
+        reference(&r, "src/app.ts", "gone").outcome,
+        Outcome::Unresolved
+    );
     let nope = reference(&r, "src/app.ts", "nope");
-    assert_eq!((nope.outcome, nope.rule.as_str()), (Outcome::Unresolved, "es.export.not-found"));
-    assert_eq!(reference(&r, "src/app.ts", "parseInt").outcome, Outcome::Builtin);
+    assert_eq!(
+        (nope.outcome, nope.rule.as_str()),
+        (Outcome::Unresolved, "es.export.not-found")
+    );
+    assert_eq!(
+        reference(&r, "src/app.ts", "parseInt").outcome,
+        Outcome::Builtin
+    );
     let mystery = reference(&r, "src/app.ts", "mystery");
-    assert_eq!((mystery.outcome, mystery.rule.as_str()), (Outcome::Unresolved, "scope.unbound"));
+    assert_eq!(
+        (mystery.outcome, mystery.rule.as_str()),
+        (Outcome::Unresolved, "scope.unbound")
+    );
 
     let react = r.nodes.iter().find(|n| n.key == "ext:npm:react").unwrap();
-    assert_eq!((react.kind.as_str(), react.attrs["declared"].as_bool()), ("package", Some(true)));
+    assert_eq!(
+        (react.kind.as_str(), react.attrs["declared"].as_bool()),
+        ("package", Some(true))
+    );
     assert_eq!(r.stats.references_by_outcome["unresolved"], 5);
     assert_eq!(r.stats.files, 3);
 }
@@ -139,19 +198,47 @@ fn typescript_classes_and_members() {
             ),
         ],
     );
-    check(edge(&r, "sym:user.ts#User", "EXTENDS", "sym:base.ts#Base"), Confirmed, "es.export.local");
-    check(edge(&r, "sym:user.ts#User", "IMPLEMENTS", "sym:base.ts#Store"), Confirmed, "es.export.local");
+    check(
+        edge(&r, "sym:user.ts#User", "EXTENDS", "sym:base.ts#Base"),
+        Confirmed,
+        "es.export.local",
+    );
+    check(
+        edge(&r, "sym:user.ts#User", "IMPLEMENTS", "sym:base.ts#Store"),
+        Confirmed,
+        "es.export.local",
+    );
     let rename = "sym:user.ts#User.rename";
     // Inherited through the resolved base class; dispatch is dynamic.
     let save = edge(&r, rename, "CALLS", "sym:base.ts#Base.save");
     assert_eq!(save.count, 2);
     check(save, Probable, "es.call.this-method");
-    check(edge(&r, rename, "CALLS", "sym:user.ts#User.get"), Probable, "es.call.this-method");
-    check(edge(&r, "sym:user.ts#User.constructor", "CALLS", "sym:base.ts#Base"), Probable, "es.call.super-constructor");
-    assert_eq!(reference(&r, "user.ts", "this.missing").outcome, Outcome::Unresolved);
+    check(
+        edge(&r, rename, "CALLS", "sym:user.ts#User.get"),
+        Probable,
+        "es.call.this-method",
+    );
+    check(
+        edge(
+            &r,
+            "sym:user.ts#User.constructor",
+            "CALLS",
+            "sym:base.ts#Base",
+        ),
+        Probable,
+        "es.call.super-constructor",
+    );
+    assert_eq!(
+        reference(&r, "user.ts", "this.missing").outcome,
+        Outcome::Unresolved
+    );
 
     let make = "sym:user.ts#make";
-    check(edge(&r, make, "INSTANTIATES", "sym:user.ts#User"), Confirmed, "scope.module-symbol");
+    check(
+        edge(&r, make, "INSTANTIATES", "sym:user.ts#User"),
+        Confirmed,
+        "scope.module-symbol",
+    );
     // `User.create()` finds the static member on the base class (probable);
     // `Base.create()` names it directly (confirmed). The edge keeps the
     // strongest evidence and counts both occurrences.
@@ -159,13 +246,33 @@ fn typescript_classes_and_members() {
     assert_eq!(create.count, 2);
     check(create, Confirmed, "es.export.local");
     assert_eq!(reference(&r, "user.ts", "User.create").confidence, Probable);
-    check(edge(&r, "sym:base.ts#Base.create", "INSTANTIATES", "sym:base.ts#Base"), Confirmed, "scope.module-symbol");
+    check(
+        edge(
+            &r,
+            "sym:base.ts#Base.create",
+            "INSTANTIATES",
+            "sym:base.ts#Base",
+        ),
+        Confirmed,
+        "scope.module-symbol",
+    );
 
     // Unknown receiver: only a repository-unique, non-ubiquitous method name
     // yields an edge, and it is marked as inferred.
-    check(edge(&r, make, "CALLS", "sym:user.ts#Repo.persistAll"), Inferred, "heuristic.unique-method-name");
-    check(edge(&r, rename, "CALLS", "sym:user.ts#Repo.persistAll"), Inferred, "heuristic.unique-method-name");
-    assert_eq!(reference(&r, "user.ts", "u.get").outcome, Outcome::Unresolved);
+    check(
+        edge(&r, make, "CALLS", "sym:user.ts#Repo.persistAll"),
+        Inferred,
+        "heuristic.unique-method-name",
+    );
+    check(
+        edge(&r, rename, "CALLS", "sym:user.ts#Repo.persistAll"),
+        Inferred,
+        "heuristic.unique-method-name",
+    );
+    assert_eq!(
+        reference(&r, "user.ts", "u.get").outcome,
+        Outcome::Unresolved
+    );
 }
 
 #[test]
@@ -192,16 +299,53 @@ fn typescript_path_aliases_and_workspace_packages() {
         ],
     );
     let page = "sym:web/src/page.tsx#Page";
-    check(edge(&r, page, "CALLS", "sym:web/src/lib/index.ts#helper"), Confirmed, "es.export.local");
+    check(
+        edge(&r, page, "CALLS", "sym:web/src/lib/index.ts#helper"),
+        Confirmed,
+        "es.export.local",
+    );
     let fmt = edge(&r, page, "CALLS", "sym:web/src/util/fmt.ts#fmt");
     assert_eq!((fmt.count, fmt.confidence), (2, Confirmed));
-    check(edge(&r, page, "CALLS", "sym:packages/core/lib/main.ts#core"), Probable, "es.export.local");
-    check(edge(&r, page, "CALLS", "sym:packages/core/src/extra.ts#extra"), Probable, "es.export.local");
-    check(edge(&r, page, "REFERENCES", "sym:web/src/page.tsx#Card"), Confirmed, "scope.module-symbol");
-    check(edge(&r, "file:web/src/page.tsx", "IMPORTS", "file:web/src/lib/index.ts"), Confirmed, "es.import.tsconfig-paths");
-    check(edge(&r, "file:web/src/page.tsx", "IMPORTS", "file:packages/core/lib/main.ts"), Probable, "es.import.workspace-package");
+    check(
+        edge(&r, page, "CALLS", "sym:packages/core/lib/main.ts#core"),
+        Probable,
+        "es.export.local",
+    );
+    check(
+        edge(&r, page, "CALLS", "sym:packages/core/src/extra.ts#extra"),
+        Probable,
+        "es.export.local",
+    );
+    check(
+        edge(&r, page, "REFERENCES", "sym:web/src/page.tsx#Card"),
+        Confirmed,
+        "scope.module-symbol",
+    );
+    check(
+        edge(
+            &r,
+            "file:web/src/page.tsx",
+            "IMPORTS",
+            "file:web/src/lib/index.ts",
+        ),
+        Confirmed,
+        "es.import.tsconfig-paths",
+    );
+    check(
+        edge(
+            &r,
+            "file:web/src/page.tsx",
+            "IMPORTS",
+            "file:packages/core/lib/main.ts",
+        ),
+        Probable,
+        "es.import.workspace-package",
+    );
     let nowhere = reference(&r, "web/src/page.tsx", "@/nowhere");
-    assert_eq!((nowhere.outcome, nowhere.rule.as_str()), (Outcome::Unresolved, "es.import.tsconfig-paths"));
+    assert_eq!(
+        (nowhere.outcome, nowhere.rule.as_str()),
+        (Outcome::Unresolved, "es.import.tsconfig-paths")
+    );
 }
 
 #[test]
@@ -236,13 +380,26 @@ fn shadowing_and_anonymous_scopes() {
         )],
     );
     no_edge(&r, "sym:a.ts#shadow", "INSTANTIATES");
-    assert_eq!(r.edges.iter().filter(|e| e.src == "sym:a.ts#shadow" && e.kind == "CALLS").count(), 1);
-    check(edge(&r, "sym:a.ts#shadow", "CALLS", "sym:a.ts#shadow.inner"), Confirmed, "scope.nested-definition");
+    assert_eq!(
+        r.edges
+            .iter()
+            .filter(|e| e.src == "sym:a.ts#shadow" && e.kind == "CALLS")
+            .count(),
+        1
+    );
+    check(
+        edge(&r, "sym:a.ts#shadow", "CALLS", "sym:a.ts#shadow.inner"),
+        Confirmed,
+        "scope.nested-definition",
+    );
     edge(&r, "sym:a.ts#ok", "CALLS", "sym:a.ts#helper");
     edge(&r, "sym:a.ts#ok", "CALLS", "sym:a.ts#target");
     // `target` is rebound by a callback parameter at module level, so the
     // module-level call cannot be attributed to the function `target`.
-    assert!(!r.edges.iter().any(|e| e.src == "file:a.ts" && e.dst == "sym:a.ts#target" && e.kind == "CALLS"));
+    assert!(!r
+        .edges
+        .iter()
+        .any(|e| e.src == "file:a.ts" && e.dst == "sym:a.ts#target" && e.kind == "CALLS"));
     edge(&r, "file:a.ts", "CALLS", "sym:a.ts#helper");
 }
 
@@ -266,34 +423,116 @@ fn python_packages_and_imports() {
     let slug = edge(&r, start, "CALLS", "sym:src/app/util.py#slug");
     assert_eq!(slug.count, 2);
     check(slug, Confirmed, "py.import.submodule");
-    check(edge(&r, start, "CALLS", "ext:python:os"), Confirmed, "py.import.stdlib");
-    check(edge(&r, start, "CALLS", "ext:python:requests"), Confirmed, "py.import.declared-dependency");
-    check(edge(&r, start, "CALLS", "ext:python:yaml"), Probable, "py.import.undeclared-module");
-    check(edge(&r, start, "INSTANTIATES", "sym:src/app/models/user.py#User"), Confirmed, "py.module-attribute");
-    check(edge(&r, start, "CALLS", "sym:src/app/core.py#Engine.stop"), Probable, "py.call.self-method");
-    assert_eq!(reference(&r, "src/app/core.py", "self.nope").outcome, Outcome::Unresolved);
-    assert_eq!(reference(&r, "src/app/core.py", "print").outcome, Outcome::Builtin);
+    check(
+        edge(&r, start, "CALLS", "ext:python:os"),
+        Confirmed,
+        "py.import.stdlib",
+    );
+    check(
+        edge(&r, start, "CALLS", "ext:python:requests"),
+        Confirmed,
+        "py.import.declared-dependency",
+    );
+    check(
+        edge(&r, start, "CALLS", "ext:python:yaml"),
+        Probable,
+        "py.import.undeclared-module",
+    );
+    check(
+        edge(&r, start, "INSTANTIATES", "sym:src/app/models/user.py#User"),
+        Confirmed,
+        "py.module-attribute",
+    );
+    check(
+        edge(&r, start, "CALLS", "sym:src/app/core.py#Engine.stop"),
+        Probable,
+        "py.call.self-method",
+    );
+    assert_eq!(
+        reference(&r, "src/app/core.py", "self.nope").outcome,
+        Outcome::Unresolved
+    );
+    assert_eq!(
+        reference(&r, "src/app/core.py", "print").outcome,
+        Outcome::Builtin
+    );
     let missing = reference(&r, "src/app/core.py", "missing");
-    assert_eq!((missing.outcome, missing.rule.as_str()), (Outcome::Unresolved, "py.module-attribute"));
+    assert_eq!(
+        (missing.outcome, missing.rule.as_str()),
+        (Outcome::Unresolved, "py.module-attribute")
+    );
     // `u` is a local whose type is not tracked; `save` is unique in the repository.
-    check(edge(&r, start, "CALLS", "sym:src/app/models/user.py#User.save"), Inferred, "heuristic.unique-method-name");
+    check(
+        edge(&r, start, "CALLS", "sym:src/app/models/user.py#User.save"),
+        Inferred,
+        "heuristic.unique-method-name",
+    );
     // `Base` is not defined or imported anywhere.
-    assert_eq!(reference(&r, "src/app/core.py", "Base").outcome, Outcome::Unresolved);
+    assert_eq!(
+        reference(&r, "src/app/core.py", "Base").outcome,
+        Outcome::Unresolved
+    );
 
-    check(edge(&r, "file:src/app/core.py", "IMPORTS", "file:src/app/util.py"), Confirmed, "py.import.submodule");
-    edge(&r, "file:src/app/core.py", "IMPORTS", "file:src/app/__init__.py");
-    edge(&r, "file:src/app/core.py", "IMPORTS", "file:src/app/models/user.py");
-    edge(&r, "file:src/app/models/user.py", "IMPORTS", "file:src/app/core.py");
-    check(edge(&r, "file:src/app/__init__.py", "EXPORTS", "sym:src/app/core.py#Engine"), Confirmed, "py.reexport");
-    let engine = r.nodes.iter().find(|n| n.key == "sym:src/app/core.py#Engine").unwrap();
+    check(
+        edge(
+            &r,
+            "file:src/app/core.py",
+            "IMPORTS",
+            "file:src/app/util.py",
+        ),
+        Confirmed,
+        "py.import.submodule",
+    );
+    edge(
+        &r,
+        "file:src/app/core.py",
+        "IMPORTS",
+        "file:src/app/__init__.py",
+    );
+    edge(
+        &r,
+        "file:src/app/core.py",
+        "IMPORTS",
+        "file:src/app/models/user.py",
+    );
+    edge(
+        &r,
+        "file:src/app/models/user.py",
+        "IMPORTS",
+        "file:src/app/core.py",
+    );
+    check(
+        edge(
+            &r,
+            "file:src/app/__init__.py",
+            "EXPORTS",
+            "sym:src/app/core.py#Engine",
+        ),
+        Confirmed,
+        "py.reexport",
+    );
+    let engine = r
+        .nodes
+        .iter()
+        .find(|n| n.key == "sym:src/app/core.py#Engine")
+        .unwrap();
     assert!(engine.exported);
 
     // From outside the package, through the `src` layout and a re-export.
     let test = "sym:tests/test_app.py#test";
-    check(edge(&r, test, "INSTANTIATES", "sym:src/app/core.py#Engine"), Confirmed, "py.reexport");
+    check(
+        edge(&r, test, "INSTANTIATES", "sym:src/app/core.py#Engine"),
+        Confirmed,
+        "py.reexport",
+    );
     edge(&r, test, "CALLS", "sym:src/app/util.py#slug");
     edge(&r, test, "INSTANTIATES", "sym:src/app/models/user.py#User");
-    edge(&r, "file:tests/test_app.py", "IMPORTS", "file:src/app/models/user.py");
+    edge(
+        &r,
+        "file:tests/test_app.py",
+        "IMPORTS",
+        "file:src/app/models/user.py",
+    );
 }
 
 #[test]
@@ -307,17 +546,64 @@ fn python_inheritance_and_wildcards() {
             ("json.py", "def dumps(x): pass\n"),
         ],
     );
-    check(edge(&r, "sym:shapes.py#Square", "EXTENDS", "sym:shapes.py#Shape"), Confirmed, "scope.module-symbol");
-    check(edge(&r, "sym:shapes.py#Shape", "EXTENDS", "ext:python:typing"), Confirmed, "py.import.stdlib");
-    check(edge(&r, "sym:shapes.py#Square.area", "CALLS", "sym:shapes.py#Shape.area"), Probable, "py.call.super-method");
-    check(edge(&r, "sym:shapes.py#Square.describe", "CALLS", "sym:shapes.py#Square.area"), Probable, "py.call.self-method");
-    check(edge(&r, "sym:shapes.py#Shape.unit", "INSTANTIATES", "sym:shapes.py#Shape"), Probable, "py.call.cls");
+    check(
+        edge(&r, "sym:shapes.py#Square", "EXTENDS", "sym:shapes.py#Shape"),
+        Confirmed,
+        "scope.module-symbol",
+    );
+    check(
+        edge(&r, "sym:shapes.py#Shape", "EXTENDS", "ext:python:typing"),
+        Confirmed,
+        "py.import.stdlib",
+    );
+    check(
+        edge(
+            &r,
+            "sym:shapes.py#Square.area",
+            "CALLS",
+            "sym:shapes.py#Shape.area",
+        ),
+        Probable,
+        "py.call.super-method",
+    );
+    check(
+        edge(
+            &r,
+            "sym:shapes.py#Square.describe",
+            "CALLS",
+            "sym:shapes.py#Square.area",
+        ),
+        Probable,
+        "py.call.self-method",
+    );
+    check(
+        edge(
+            &r,
+            "sym:shapes.py#Shape.unit",
+            "INSTANTIATES",
+            "sym:shapes.py#Shape",
+        ),
+        Probable,
+        "py.call.cls",
+    );
     let run = "sym:main.py#run";
     // Inherited classmethod through a wildcard re-export: never stronger than probable.
-    check(edge(&r, run, "CALLS", "sym:shapes.py#Shape.unit"), Probable, "py.import.wildcard");
-    check(edge(&r, run, "INSTANTIATES", "sym:shapes.py#Shape"), Probable, "py.import.wildcard");
+    check(
+        edge(&r, run, "CALLS", "sym:shapes.py#Shape.unit"),
+        Probable,
+        "py.import.wildcard",
+    );
+    check(
+        edge(&r, run, "INSTANTIATES", "sym:shapes.py#Shape"),
+        Probable,
+        "py.import.wildcard",
+    );
     // A top-level `json.py` next to the importer really does shadow the stdlib.
-    check(edge(&r, run, "CALLS", "sym:json.py#dumps"), Confirmed, "py.import.absolute");
+    check(
+        edge(&r, run, "CALLS", "sym:json.py#dumps"),
+        Confirmed,
+        "py.import.absolute",
+    );
 }
 
 #[test]
@@ -335,8 +621,16 @@ fn python_package_init_and_class_body() {
     let render = edge(&r, "sym:use.py#go", "CALLS", "sym:lib/fmt.py#render");
     assert_eq!(render.count, 3);
     assert_eq!(render.confidence, Confirmed);
-    check(edge(&r, "sym:model.py#M", "REFERENCES", "sym:model.py#M.size"), Confirmed, "py.property-accessor");
-    check(edge(&r, "sym:model.py#M", "REFERENCES", "sym:model.py#M.check"), Confirmed, "scope.class-member");
+    check(
+        edge(&r, "sym:model.py#M", "REFERENCES", "sym:model.py#M.size"),
+        Confirmed,
+        "py.property-accessor",
+    );
+    check(
+        edge(&r, "sym:model.py#M", "REFERENCES", "sym:model.py#M.check"),
+        Confirmed,
+        "scope.class-member",
+    );
     edge(&r, "sym:model.py#M", "CALLS", "sym:model.py#validator");
 }
 
@@ -347,19 +641,35 @@ fn wide_reexport_graphs_stay_fast() {
     let n = 40;
     let mut files: Vec<(String, String)> = (0..n)
         .map(|i| {
-            let stars: String = (0..n).filter(|j| *j != i).map(|j| format!("export * from './b{j}';\n")).collect();
-            (format!("b{i}.ts"), format!("{stars}export function f{i}() {{}}\n"))
+            let stars: String = (0..n)
+                .filter(|j| *j != i)
+                .map(|j| format!("export * from './b{j}';\n"))
+                .collect();
+            (
+                format!("b{i}.ts"),
+                format!("{stars}export function f{i}() {{}}\n"),
+            )
         })
         .collect();
     let calls: String = (0..n).map(|i| format!("f{i}(); ")).collect();
     let names: String = (0..n).map(|i| format!("f{i}, ")).collect();
     files.push(("main.ts".into(), format!("import {{ {names}nothing }} from './b0';\nexport function run() {{ {calls}nothing(); }}\n")));
-    let borrowed: Vec<(&str, &str)> = files.iter().map(|(p, s)| (p.as_str(), s.as_str())).collect();
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, s)| (p.as_str(), s.as_str()))
+        .collect();
     let started = std::time::Instant::now();
     let r = project(ProjectConfig::default(), &borrowed);
-    assert!(started.elapsed() < std::time::Duration::from_secs(20), "took {:?}", started.elapsed());
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "took {:?}",
+        started.elapsed()
+    );
     edge(&r, "sym:main.ts#run", "CALLS", "sym:b0.ts#f0");
-    assert_eq!(reference(&r, "main.ts", "nothing").outcome, Outcome::Unresolved);
+    assert_eq!(
+        reference(&r, "main.ts", "nothing").outcome,
+        Outcome::Unresolved
+    );
 }
 
 #[test]
@@ -379,9 +689,15 @@ fn ambiguity_is_reported_not_guessed() {
     let tool = reference(&r, "c/main.py", "tool");
     assert_eq!(tool.outcome, Outcome::Unresolved);
     assert!(tool.reason.as_ref().unwrap().contains("ambiguous"));
-    assert_eq!(reference(&r, "c/main.py", "tool.run").outcome, Outcome::Unresolved);
+    assert_eq!(
+        reference(&r, "c/main.py", "tool.run").outcome,
+        Outcome::Unresolved
+    );
     let dup = reference(&r, "w.ts", "dup");
-    assert_eq!((dup.outcome, dup.rule.as_str()), (Outcome::Unresolved, "es.export.wildcard"));
+    assert_eq!(
+        (dup.outcome, dup.rule.as_str()),
+        (Outcome::Unresolved, "es.export.wildcard")
+    );
 }
 
 #[test]
@@ -397,14 +713,23 @@ fn cycles_terminate() {
     );
     assert_eq!(reference(&r, "a.ts", "y").outcome, Outcome::Unresolved);
     assert_eq!(reference(&r, "p.py", "thing").outcome, Outcome::Unresolved);
-    assert_eq!(reference(&r, "q.py", "self.zzz").outcome, Outcome::Unresolved);
+    assert_eq!(
+        reference(&r, "q.py", "self.zzz").outcome,
+        Outcome::Unresolved
+    );
 }
 
 #[test]
 fn output_is_deterministic_and_keys_are_unique() {
     let files = [
-        ("m.py", "def f(): pass\ndef f(): pass\nclass C:\n    def f(self): f()\n"),
-        ("n.ts", "export function g(): void;\nexport function g(a?: number): void {}\ng();\n"),
+        (
+            "m.py",
+            "def f(): pass\ndef f(): pass\nclass C:\n    def f(self): f()\n",
+        ),
+        (
+            "n.ts",
+            "export function g(): void;\nexport function g(a?: number): void {}\ng();\n",
+        ),
     ];
     let a = project(ProjectConfig::default(), &files);
     let b = project(ProjectConfig::default(), &files);
@@ -417,10 +742,23 @@ fn output_is_deterministic_and_keys_are_unique() {
     keys.dedup();
     assert_eq!(keys.len(), total);
     // Two definitions of `f`: the call is attributed, but not as confirmed.
-    check(edge(&a, "sym:m.py#C.f", "CALLS", "sym:m.py#f"), Probable, "scope.module-symbol");
-    let node_keys: std::collections::HashSet<&str> = a.nodes.iter().map(|n| n.key.as_str()).collect();
+    check(
+        edge(&a, "sym:m.py#C.f", "CALLS", "sym:m.py#f"),
+        Probable,
+        "scope.module-symbol",
+    );
+    let node_keys: std::collections::HashSet<&str> =
+        a.nodes.iter().map(|n| n.key.as_str()).collect();
     for e in &a.edges {
-        assert!(e.src.starts_with("file:") || node_keys.contains(e.src.as_str()), "dangling src {}", e.src);
-        assert!(e.dst.starts_with("file:") || node_keys.contains(e.dst.as_str()), "dangling dst {}", e.dst);
+        assert!(
+            e.src.starts_with("file:") || node_keys.contains(e.src.as_str()),
+            "dangling src {}",
+            e.src
+        );
+        assert!(
+            e.dst.starts_with("file:") || node_keys.contains(e.dst.as_str()),
+            "dangling dst {}",
+            e.dst
+        );
     }
 }

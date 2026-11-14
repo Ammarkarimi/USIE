@@ -81,7 +81,11 @@ pub fn parser_fingerprint(language: Language) -> String {
 ///
 /// Syntax errors are not failures: the returned IR carries diagnostics and
 /// whatever structure tree-sitter's error recovery could establish.
-pub fn parse(language: Language, source: &[u8], options: &ParseOptions) -> Result<FileIr, ParseError> {
+pub fn parse(
+    language: Language,
+    source: &[u8],
+    options: &ParseOptions,
+) -> Result<FileIr, ParseError> {
     let ts_language: tree_sitter::Language = match language {
         Language::Python => tree_sitter_python::LANGUAGE.into(),
         Language::Javascript => tree_sitter_javascript::LANGUAGE.into(),
@@ -106,7 +110,13 @@ pub fn parse(language: Language, source: &[u8], options: &ParseOptions) -> Resul
     let len = source.len();
     let tree = parser
         .parse_with_options(
-            &mut |offset: usize, _| if offset < len { &source[offset..] } else { &[][..] },
+            &mut |offset: usize, _| {
+                if offset < len {
+                    &source[offset..]
+                } else {
+                    &[][..]
+                }
+            },
             None,
             Some(ts_options),
         )

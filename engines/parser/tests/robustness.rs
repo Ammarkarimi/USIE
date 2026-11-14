@@ -5,11 +5,19 @@ use proptest::prelude::*;
 use usie_ir::{FileIr, Language};
 use usie_parser::{parse, ParseOptions};
 
-const LANGUAGES: [Language; 4] = [Language::Python, Language::Javascript, Language::Typescript, Language::Tsx];
+const LANGUAGES: [Language; 4] = [
+    Language::Python,
+    Language::Javascript,
+    Language::Typescript,
+    Language::Tsx,
+];
 
 fn check_invariants(ir: &FileIr, len: usize) {
     let in_bounds = |s: &usie_ir::Span| {
-        assert!(s.start_byte <= s.end_byte && s.end_byte as usize <= len, "span out of bounds: {s:?}");
+        assert!(
+            s.start_byte <= s.end_byte && s.end_byte as usize <= len,
+            "span out of bounds: {s:?}"
+        );
         assert!(s.start_line >= 1 && s.start_line <= s.end_line);
     };
     for (i, sym) in ir.symbols.iter().enumerate() {
@@ -17,7 +25,10 @@ fn check_invariants(ir: &FileIr, len: usize) {
         if let Some(p) = sym.parent {
             assert!(p < sym.id, "parents precede children");
             let parent = &ir.symbols[p as usize];
-            assert_eq!(sym.qualified_name, format!("{}.{}", parent.qualified_name, sym.name));
+            assert_eq!(
+                sym.qualified_name,
+                format!("{}.{}", parent.qualified_name, sym.name)
+            );
         } else {
             assert_eq!(sym.qualified_name, sym.name);
         }

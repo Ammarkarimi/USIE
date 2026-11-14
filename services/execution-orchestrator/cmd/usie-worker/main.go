@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/ammarkarimi/usie/internal/pipeline"
@@ -59,7 +60,7 @@ func main() {
 	finished := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "usie_worker_jobs_finished_total", Help: "Jobs finished by outcome."}, []string{"outcome"})
 	duration := prometheus.NewHistogram(prometheus.HistogramOpts{Name: "usie_worker_job_duration_seconds", Help: "Job execution time.", Buckets: prometheus.ExponentialBuckets(0.5, 2, 12)})
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(finished, duration, prometheus.NewGoCollector(), prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	registry.MustRegister(finished, duration, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	if addr := os.Getenv("USIE_WORKER_METRICS_ADDR"); addr != "" {
 		mux := http.NewServeMux()
 		mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))

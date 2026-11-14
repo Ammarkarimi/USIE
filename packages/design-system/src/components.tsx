@@ -50,7 +50,9 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cx(
-        "h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-fg placeholder:text-muted",
+        "h-9 rounded-md border border-border bg-surface px-3 text-sm text-fg placeholder:text-muted",
+        // Full width unless the caller sets a width.
+        !/(^|\s)w-/.test(className ?? "") && "w-full",
         "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30",
         className,
       )}

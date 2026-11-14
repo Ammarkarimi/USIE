@@ -23,7 +23,12 @@ use usie_ir::{FileIr, Language, IR_SCHEMA_VERSION};
 use usie_parser::{ParseError, ParseOptions};
 use usie_semantic::{Project, ProjectConfig, SourceFile};
 
-const LANGUAGES: [Language; 4] = [Language::Python, Language::Javascript, Language::Typescript, Language::Tsx];
+const LANGUAGES: [Language; 4] = [
+    Language::Python,
+    Language::Javascript,
+    Language::Typescript,
+    Language::Tsx,
+];
 const BATCH: usize = 256;
 /// Extraction recurses over the syntax tree; give workers room for deep input.
 const WORKER_STACK: usize = 16 * 1024 * 1024;
@@ -61,13 +66,25 @@ struct Failure {
 
 impl Failure {
     fn usage(message: impl Into<String>) -> Failure {
-        Failure { code: "usage", message: message.into(), exit: 2 }
+        Failure {
+            code: "usage",
+            message: message.into(),
+            exit: 2,
+        }
     }
     fn input(message: impl Into<String>) -> Failure {
-        Failure { code: "invalid_input", message: message.into(), exit: 3 }
+        Failure {
+            code: "invalid_input",
+            message: message.into(),
+            exit: 3,
+        }
     }
     fn io(err: io::Error) -> Failure {
-        Failure { code: "io", message: err.to_string(), exit: 4 }
+        Failure {
+            code: "io",
+            message: err.to_string(),
+            exit: 4,
+        }
     }
 }
 
@@ -105,8 +122,14 @@ fn parse_args(args: &[String]) -> Result<ParseArgs, Failure> {
     let mut threads = 0usize;
     let mut it = args.iter();
     while let Some(flag) = it.next() {
-        let mut value = || it.next().ok_or_else(|| Failure::usage(format!("{flag} needs a value")));
-        let number = |v: &String| v.parse::<u64>().map_err(|_| Failure::usage(format!("{flag}: `{v}` is not a number")));
+        let mut value = || {
+            it.next()
+                .ok_or_else(|| Failure::usage(format!("{flag} needs a value")))
+        };
+        let number = |v: &String| {
+            v.parse::<u64>()
+                .map_err(|_| Failure::usage(format!("{flag}: `{v}` is not a number")))
+        };
         match flag.as_str() {
             "--root" => root = Some(PathBuf::from(value()?)),
             "--timeout-ms" => timeout_ms = number(value()?)?,
@@ -117,8 +140,15 @@ fn parse_args(args: &[String]) -> Result<ParseArgs, Failure> {
     }
     let root = root.ok_or_else(|| Failure::usage("parse requires --root <dir>"))?;
     // Canonicalize once: every file read is checked against this prefix.
-    let root = root.canonicalize().map_err(|e| Failure::usage(format!("--root: {e}")))?;
-    Ok(ParseArgs { root, timeout: Duration::from_millis(timeout_ms), max_file_bytes, threads })
+    let root = root
+        .canonicalize()
+        .map_err(|e| Failure::usage(format!("--root: {e}")))?;
+    Ok(ParseArgs {
+        root,
+        timeout: Duration::from_millis(timeout_ms),
+        max_file_bytes,
+        threads,
+    })
 }
 
 #[derive(Deserialize)]
@@ -154,22 +184,35 @@ fn parse_command(args: ParseArgs) -> Result<(), Failure> {
         .num_threads(args.threads)
         .stack_size(WORKER_STACK)
         .build()
-        .map_err(|e| Failure { code: "internal", message: e.to_string(), exit: 5 })?;
-    let options = ParseOptions { timeout: args.timeout, ..ParseOptions::default() };
+        .map_err(|e| Failure {
+            code: "internal",
+            message: e.to_string(),
+            exit: 5,
+        })?;
+    let options = ParseOptions {
+        timeout: args.timeout,
+        ..ParseOptions::default()
+    };
     let stdin = io::stdin().lock();
     let mut out = BufWriter::new(io::stdout().lock());
     let mut batch: Vec<String> = Vec::with_capacity(BATCH);
 
-    let flush = |batch: &mut Vec<String>, out: &mut BufWriter<io::StdoutLock>| -> Result<(), Failure> {
-        let results: Vec<String> = pool.install(|| batch.par_iter().map(|line| handle_parse(line, &args, &options)).collect());
-        for line in results {
-            out.write_all(line.as_bytes()).map_err(Failure::io)?;
-            out.write_all(b"\n").map_err(Failure::io)?;
-        }
-        out.flush().map_err(Failure::io)?;
-        batch.clear();
-        Ok(())
-    };
+    let flush =
+        |batch: &mut Vec<String>, out: &mut BufWriter<io::StdoutLock>| -> Result<(), Failure> {
+            let results: Vec<String> = pool.install(|| {
+                batch
+                    .par_iter()
+                    .map(|line| handle_parse(line, &args, &options))
+                    .collect()
+            });
+            for line in results {
+                out.write_all(line.as_bytes()).map_err(Failure::io)?;
+                out.write_all(b"\n").map_err(Failure::io)?;
+            }
+            out.flush().map_err(Failure::io)?;
+            batch.clear();
+            Ok(())
+        };
 
     for line in stdin.lines() {
         let line = line.map_err(Failure::io)?;
@@ -189,8 +232,24 @@ fn handle_parse(line: &str, args: &ParseArgs, options: &ParseOptions) -> String 
         Ok(req) => {
             let (id, path) = (req.id.clone(), req.path.clone());
             match parse_one(&req, args, options) {
-                Ok((ir, bytes)) => ParseResponse { id, path, status: "ok", ir: Some(ir), code: None, message: None, bytes },
-                Err((code, message)) => ParseResponse { id, path, status: "error", ir: None, code: Some(code), message: Some(message), bytes: 0 },
+                Ok((ir, bytes)) => ParseResponse {
+                    id,
+                    path,
+                    status: "ok",
+                    ir: Some(ir),
+                    code: None,
+                    message: None,
+                    bytes,
+                },
+                Err((code, message)) => ParseResponse {
+                    id,
+                    path,
+                    status: "error",
+                    ir: None,
+                    code: Some(code),
+                    message: Some(message),
+                    bytes: 0,
+                },
             }
         }
         Err(e) => ParseResponse {
@@ -206,17 +265,35 @@ fn handle_parse(line: &str, args: &ParseArgs, options: &ParseOptions) -> String 
     serde_json::to_string(&response).expect("response serializes")
 }
 
-fn parse_one(req: &ParseRequest, args: &ParseArgs, options: &ParseOptions) -> Result<(FileIr, u64), (&'static str, String)> {
-    let language = Language::parse(&req.language)
-        .ok_or_else(|| ("unsupported_language", format!("no parser for `{}`", req.language)))?;
+fn parse_one(
+    req: &ParseRequest,
+    args: &ParseArgs,
+    options: &ParseOptions,
+) -> Result<(FileIr, u64), (&'static str, String)> {
+    let language = Language::parse(&req.language).ok_or_else(|| {
+        (
+            "unsupported_language",
+            format!("no parser for `{}`", req.language),
+        )
+    })?;
     let rel = req.source.as_deref().unwrap_or(&req.path);
     let file = safe_path(&args.root, rel)?;
     let meta = std::fs::symlink_metadata(&file).map_err(|e| ("read_error", e.to_string()))?;
     if !meta.is_file() {
-        return Err(("not_regular_file", "not a regular file (symlinks are not followed)".into()));
+        return Err((
+            "not_regular_file",
+            "not a regular file (symlinks are not followed)".into(),
+        ));
     }
     if meta.len() > args.max_file_bytes {
-        return Err(("too_large", format!("{} bytes exceeds the limit of {}", meta.len(), args.max_file_bytes)));
+        return Err((
+            "too_large",
+            format!(
+                "{} bytes exceeds the limit of {}",
+                meta.len(),
+                args.max_file_bytes
+            ),
+        ));
     }
     let mut source = Vec::with_capacity(meta.len() as usize);
     // `take` bounds the read even if the file grows after the size check.
@@ -224,11 +301,17 @@ fn parse_one(req: &ParseRequest, args: &ParseArgs, options: &ParseOptions) -> Re
         .and_then(|f| f.take(args.max_file_bytes + 1).read_to_end(&mut source))
         .map_err(|e| ("read_error", e.to_string()))?;
     if source.len() as u64 > args.max_file_bytes {
-        return Err(("too_large", format!("file exceeds the limit of {} bytes", args.max_file_bytes)));
+        return Err((
+            "too_large",
+            format!("file exceeds the limit of {} bytes", args.max_file_bytes),
+        ));
     }
     match usie_parser::parse(language, &source, options) {
         Ok(ir) => Ok((ir, source.len() as u64)),
-        Err(ParseError::Timeout) => Err(("timeout", format!("parse exceeded {} ms", options.timeout.as_millis()))),
+        Err(ParseError::Timeout) => Err((
+            "timeout",
+            format!("parse exceeded {} ms", options.timeout.as_millis()),
+        )),
         Err(ParseError::Grammar(m)) => Err(("grammar", m)),
     }
 }
@@ -237,12 +320,22 @@ fn parse_one(req: &ParseRequest, args: &ParseArgs, options: &ParseOptions) -> Re
 /// escape it: absolute paths, `..` components, and symlinked directories.
 fn safe_path(root: &Path, rel: &str) -> Result<PathBuf, (&'static str, String)> {
     let rel_path = Path::new(rel);
-    if rel.is_empty() || rel.contains('\0') || rel_path.components().any(|c| !matches!(c, Component::Normal(_))) {
-        return Err(("path_escape", format!("`{rel}` is not a plain relative path")));
+    if rel.is_empty()
+        || rel.contains('\0')
+        || rel_path
+            .components()
+            .any(|c| !matches!(c, Component::Normal(_)))
+    {
+        return Err((
+            "path_escape",
+            format!("`{rel}` is not a plain relative path"),
+        ));
     }
     let joined = root.join(rel_path);
     let parent = joined.parent().unwrap_or(root);
-    let real_parent = parent.canonicalize().map_err(|e| ("read_error", e.to_string()))?;
+    let real_parent = parent
+        .canonicalize()
+        .map_err(|e| ("read_error", e.to_string()))?;
     if !real_parent.starts_with(root) {
         return Err(("path_escape", format!("`{rel}` resolves outside the root")));
     }
@@ -291,7 +384,11 @@ fn resolve_command() -> Result<(), Failure> {
         .spawn(move || usie_semantic::resolve(&project))
         .map_err(Failure::io)?
         .join()
-        .map_err(|_| Failure { code: "internal", message: "resolver panicked".into(), exit: 5 })?;
+        .map_err(|_| Failure {
+            code: "internal",
+            message: "resolver panicked".into(),
+            exit: 5,
+        })?;
 
     let mut out = BufWriter::new(io::stdout().lock());
     let mut emit = |kind: &str, value: serde_json::Value| -> Result<(), Failure> {
@@ -306,10 +403,16 @@ fn resolve_command() -> Result<(), Failure> {
         emit("edge", serde_json::to_value(edge).expect("edge serializes"))?;
     }
     for reference in &resolution.references {
-        emit("reference", serde_json::to_value(reference).expect("reference serializes"))?;
+        emit(
+            "reference",
+            serde_json::to_value(reference).expect("reference serializes"),
+        )?;
     }
     // The stats record is always last: its presence marks complete output.
-    emit("stats", serde_json::to_value(&resolution.stats).expect("stats serialize"))?;
+    emit(
+        "stats",
+        serde_json::to_value(&resolution.stats).expect("stats serialize"),
+    )?;
     out.flush().map_err(Failure::io)
 }
 
@@ -329,10 +432,18 @@ fn validate_ir(path: &str, ir: &FileIr) -> Result<(), Failure> {
             return Err(bad("symbol locals are not sorted"));
         }
     }
-    if ir.references.iter().any(|r| r.scope.is_some_and(|s| s >= count)) {
+    if ir
+        .references
+        .iter()
+        .any(|r| r.scope.is_some_and(|s| s >= count))
+    {
         return Err(bad("reference scope out of range"));
     }
-    if ir.imports.iter().any(|i| i.scope.is_some_and(|s| s >= count)) {
+    if ir
+        .imports
+        .iter()
+        .any(|i| i.scope.is_some_and(|s| s >= count))
+    {
         return Err(bad("import scope out of range"));
     }
     Ok(())

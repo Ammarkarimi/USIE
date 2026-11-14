@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/ammarkarimi/usie/internal/platform/authn"
@@ -98,7 +99,7 @@ func (s *Server) Handler() http.Handler {
 	s.registry = prometheus.NewRegistry()
 	s.requests = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "usie_http_requests_total", Help: "HTTP requests by route and status."}, []string{"method", "route", "status"})
 	s.latency = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "usie_http_request_duration_seconds", Help: "HTTP request latency by route.", Buckets: prometheus.DefBuckets}, []string{"route"})
-	s.registry.MustRegister(s.requests, s.latency, prometheus.NewGoCollector(), prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	s.registry.MustRegister(s.requests, s.latency, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	s.registerQueueMetrics()
 	s.limiter = newRateLimiter(s.Cfg.RateLimitPerMinute)
 	s.authLim = newRateLimiter(s.Cfg.AuthRateLimitPerMinute)

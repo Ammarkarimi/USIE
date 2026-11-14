@@ -27,7 +27,11 @@ pub(crate) fn parent(dir: &str) -> Option<&str> {
 
 /// Join and normalize. Returns `None` when the result escapes the root.
 pub(crate) fn join(dir: &str, rel: &str) -> Option<String> {
-    let mut parts: Vec<&str> = if dir.is_empty() { Vec::new() } else { dir.split('/').collect() };
+    let mut parts: Vec<&str> = if dir.is_empty() {
+        Vec::new()
+    } else {
+        dir.split('/').collect()
+    };
     for seg in rel.split('/') {
         match seg {
             "" | "." => {}
@@ -42,7 +46,8 @@ pub(crate) fn join(dir: &str, rel: &str) -> Option<String> {
 
 /// Whether `path` lies inside directory `dir`.
 pub(crate) fn is_under(path: &str, dir: &str) -> bool {
-    dir.is_empty() || (path.len() > dir.len() && path.starts_with(dir) && path.as_bytes()[dir.len()] == b'/')
+    dir.is_empty()
+        || (path.len() > dir.len() && path.starts_with(dir) && path.as_bytes()[dir.len()] == b'/')
 }
 
 /// `path` relative to `dir`; caller guarantees `is_under(path, dir)`.

@@ -61,9 +61,13 @@ export function GraphCanvas({ nodes, edges, focusId, onSelect, layout = "cose" }
           style: {
             width: 1.5, "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.8,
             "line-color": conf.unknown, "target-arrow-color": conf.unknown,
-            label: "data(label)", "font-size": 7, color: css("muted"), "text-rotation": "autorotate", "text-background-color": css("bg"), "text-background-opacity": 0.8,
+            "font-size": 7, color: css("muted"), "text-rotation": "autorotate", "text-background-color": css("bg"), "text-background-opacity": 0.8,
+            // Labels on every edge are unreadable in dense graphs: show them
+            // only for small graphs, or on hover/selection.
+            label: edges.length <= 30 ? "data(label)" : "",
           },
         },
+        { selector: "edge.hover, edge:selected", style: { label: "data(label)", width: 2.5, "z-index": 10 } },
         { selector: "edge[confidence = 'confirmed']", style: { "line-color": conf.confirmed, "target-arrow-color": conf.confirmed } },
         { selector: "edge[confidence = 'probable']", style: { "line-color": conf.probable, "target-arrow-color": conf.probable, "line-style": "dashed", "line-dash-pattern": [8, 3] } },
         { selector: "edge[confidence = 'inferred']", style: { "line-color": conf.inferred, "target-arrow-color": conf.inferred, "line-style": "dotted" } },
@@ -74,6 +78,10 @@ export function GraphCanvas({ nodes, edges, focusId, onSelect, layout = "cose" }
           ? { name: "breadthfirst", directed: true, spacingFactor: 1.2, animate: false }
           : { name: "cose", animate: false, nodeRepulsion: () => 9000, idealEdgeLength: () => 90, randomize: false },
     });
+    instance.on("mouseover", "edge", (ev) => ev.target.addClass("hover"));
+    instance.on("mouseout", "edge", (ev) => ev.target.removeClass("hover"));
+    instance.on("mouseover", "node", (ev) => ev.target.connectedEdges().addClass("hover"));
+    instance.on("mouseout", "node", (ev) => ev.target.connectedEdges().removeClass("hover"));
     instance.on("tap", "node", (ev) => {
       const id = Number((ev.target.id() as string).slice(1));
       const n = byId.get(id);

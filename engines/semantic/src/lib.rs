@@ -18,7 +18,9 @@ pub use model::*;
 use modules::ModuleIndex;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use usie_ir::{Confidence, ExportKind, FileIr, ImportKind, LanguageFamily, ReferenceKind, Symbol, SymbolKind};
+use usie_ir::{
+    Confidence, ExportKind, FileIr, ImportKind, LanguageFamily, ReferenceKind, Symbol, SymbolKind,
+};
 
 const MAX_CHAIN: u32 = 16;
 
@@ -61,10 +63,20 @@ pub(crate) struct Miss {
 
 impl Miss {
     pub(crate) fn new(rule: &'static str, reason: impl Into<String>) -> Miss {
-        Miss { rule, reason: reason.into(), builtin: false, unknown_receiver: false }
+        Miss {
+            rule,
+            reason: reason.into(),
+            builtin: false,
+            unknown_receiver: false,
+        }
     }
     fn receiver(rule: &'static str, reason: impl Into<String>) -> Miss {
-        Miss { rule, reason: reason.into(), builtin: false, unknown_receiver: true }
+        Miss {
+            rule,
+            reason: reason.into(),
+            builtin: false,
+            unknown_receiver: true,
+        }
     }
 }
 
@@ -129,7 +141,10 @@ impl<'a> Resolver<'a> {
                     format!("sym:{}#{}~{}", f.path, sym.qualified_name, n)
                 });
                 if sym.kind == SymbolKind::Method {
-                    methods_by_name.entry((family, sym.name.as_str())).or_default().push((fi, sym.id));
+                    methods_by_name
+                        .entry((family, sym.name.as_str()))
+                        .or_default()
+                        .push((fi, sym.id));
                 }
             }
             let mut bindings = HashMap::new();
@@ -154,7 +169,11 @@ impl<'a> Resolver<'a> {
                 bindings,
                 keys,
                 anon_locals,
-                commonjs: ir.attrs.get("commonjs").and_then(|v| v.as_bool()).unwrap_or(false),
+                commonjs: ir
+                    .attrs
+                    .get("commonjs")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             });
         }
         let modules = ModuleIndex::new(&project.config, &files);
@@ -208,7 +227,10 @@ impl<'a> Resolver<'a> {
         let mut edges = Vec::with_capacity(self.edges.len());
         for ((src, dst, kind), acc) in self.edges {
             *stats.edges_by_kind.entry(kind.to_string()).or_default() += 1;
-            *stats.edges_by_confidence.entry(acc.confidence.as_str().to_string()).or_default() += 1;
+            *stats
+                .edges_by_confidence
+                .entry(acc.confidence.as_str().to_string())
+                .or_default() += 1;
             edges.push(EdgeRecord {
                 src,
                 dst,
@@ -228,9 +250,17 @@ impl<'a> Resolver<'a> {
                 Outcome::Builtin => "builtin",
                 Outcome::Unresolved => "unresolved",
             };
-            *stats.references_by_outcome.entry(label.to_string()).or_default() += 1;
+            *stats
+                .references_by_outcome
+                .entry(label.to_string())
+                .or_default() += 1;
         }
-        Resolution { nodes, edges, references: self.refs, stats }
+        Resolution {
+            nodes,
+            edges,
+            references: self.refs,
+            stats,
+        }
     }
 
     // ---- phases -----------------------------------------------------------
@@ -259,8 +289,19 @@ impl<'a> Resolver<'a> {
                 Some(p) => self.files[fi].keys[p as usize].clone(),
                 None => fkey.clone(),
             };
-            let evidence = Evidence { path: path.to_string(), line: sym.span.start_line, col: sym.span.start_col };
-            self.edge(parent, key, "CONTAINS", Confidence::Confirmed, "structure.declaration", evidence);
+            let evidence = Evidence {
+                path: path.to_string(),
+                line: sym.span.start_line,
+                col: sym.span.start_col,
+            };
+            self.edge(
+                parent,
+                key,
+                "CONTAINS",
+                Confidence::Confirmed,
+                "structure.declaration",
+                evidence,
+            );
         }
     }
 
@@ -268,20 +309,45 @@ impl<'a> Resolver<'a> {
     fn heritage(&mut self, fi: usize) {
         let ir = self.files[fi].ir;
         for sym in &ir.symbols {
-            for (list, kind, label) in [(&sym.bases, "EXTENDS", "extends"), (&sym.implements, "IMPLEMENTS", "implements")] {
+            for (list, kind, label) in [
+                (&sym.bases, "EXTENDS", "extends"),
+                (&sym.implements, "IMPLEMENTS", "implements"),
+            ] {
                 for base in list {
                     let res = if base.segments.is_empty() {
-                        Err(Miss::new("heritage.computed", "base is a computed expression"))
+                        Err(Miss::new(
+                            "heritage.computed",
+                            "base is a computed expression",
+                        ))
                     } else {
                         self.lookup(fi, sym.parent, &base.segments)
                     };
-                    if let Ok(Found { target: Target::Symbol(tf, tid), .. }) = &res {
+                    if let Ok(Found {
+                        target: Target::Symbol(tf, tid),
+                        ..
+                    }) = &res
+                    {
                         let target_kind = self.files[*tf].ir.symbols[*tid as usize].kind;
-                        if matches!(target_kind, SymbolKind::Class | SymbolKind::Interface) && (*tf, *tid) != (fi, sym.id) {
-                            self.bases.borrow_mut().entry((fi, sym.id)).or_default().push((*tf, *tid));
+                        if matches!(target_kind, SymbolKind::Class | SymbolKind::Interface)
+                            && (*tf, *tid) != (fi, sym.id)
+                        {
+                            self.bases
+                                .borrow_mut()
+                                .entry((fi, sym.id))
+                                .or_default()
+                                .push((*tf, *tid));
                         }
                     }
-                    self.record(fi, Some(sym.id), label, &base.text, base.span.start_line, base.span.start_col, res, kind);
+                    self.record(
+                        fi,
+                        Some(sym.id),
+                        label,
+                        &base.text,
+                        base.span.start_line,
+                        base.span.start_col,
+                        res,
+                        kind,
+                    );
                 }
             }
         }
@@ -301,12 +367,40 @@ impl<'a> Resolver<'a> {
                         // `from pkg import submodule`: the binding may be a
                         // module even when `pkg` itself has no `__init__`.
                         match (module, self.binding(fi, idx, 0)) {
-                            (Ok(m), Ok(Found { target: Target::File(sub), confidence, rule })) => {
-                                let sub_res = Ok(Found { target: Target::File(sub), confidence, rule });
-                                self.record(fi, None, "import", &text, imp.span.start_line, imp.span.start_col, sub_res, "IMPORTS");
+                            (
+                                Ok(m),
+                                Ok(Found {
+                                    target: Target::File(sub),
+                                    confidence,
+                                    rule,
+                                }),
+                            ) => {
+                                let sub_res = Ok(Found {
+                                    target: Target::File(sub),
+                                    confidence,
+                                    rule,
+                                });
+                                self.record(
+                                    fi,
+                                    None,
+                                    "import",
+                                    &text,
+                                    imp.span.start_line,
+                                    imp.span.start_col,
+                                    sub_res,
+                                    "IMPORTS",
+                                );
                                 Ok(m)
                             }
-                            (Err(_), Ok(found @ Found { target: Target::File(_), .. })) => Ok(found),
+                            (
+                                Err(_),
+                                Ok(
+                                    found @ Found {
+                                        target: Target::File(_),
+                                        ..
+                                    },
+                                ),
+                            ) => Ok(found),
                             (m, _) => m,
                         }
                     } else {
@@ -314,13 +408,31 @@ impl<'a> Resolver<'a> {
                     }
                 }
             };
-            self.record(fi, None, "import", &text, imp.span.start_line, imp.span.start_col, res, "IMPORTS");
+            self.record(
+                fi,
+                None,
+                "import",
+                &text,
+                imp.span.start_line,
+                imp.span.start_col,
+                res,
+                "IMPORTS",
+            );
         }
         if family == LanguageFamily::Ecmascript {
             for exp in &ir.exports {
                 if let Some(source) = &exp.source {
                     let res = self.es_module(fi, source);
-                    self.record(fi, None, "import", source, exp.span.start_line, exp.span.start_col, res, "IMPORTS");
+                    self.record(
+                        fi,
+                        None,
+                        "import",
+                        source,
+                        exp.span.start_line,
+                        exp.span.start_col,
+                        res,
+                        "IMPORTS",
+                    );
                 }
             }
         }
@@ -340,10 +452,19 @@ impl<'a> Resolver<'a> {
                 LanguageFamily::Ecmascript => self.es_export(fi, &exp.name, 0),
                 LanguageFamily::Python => self.py_attr(fi, &exp.name, 0),
             };
-            if let Ok(Found { target: Target::Symbol(tf, tid), confidence, rule }) = res {
+            if let Ok(Found {
+                target: Target::Symbol(tf, tid),
+                confidence,
+                rule,
+            }) = res
+            {
                 let key = self.files[tf].keys[tid as usize].clone();
                 exported.insert(key.clone());
-                let evidence = Evidence { path: path.to_string(), line: exp.span.start_line, col: exp.span.start_col };
+                let evidence = Evidence {
+                    path: path.to_string(),
+                    line: exp.span.start_line,
+                    col: exp.span.start_col,
+                };
                 self.edge(file_key(path), key, "EXPORTS", confidence, rule, evidence);
             }
         }
@@ -355,26 +476,48 @@ impl<'a> Resolver<'a> {
         for r in &ir.references {
             let mut res = if r.path.is_empty() {
                 match &r.member {
-                    Some(_) => Err(Miss::receiver("receiver.dynamic", "receiver is a computed expression")),
-                    None => Err(Miss::new("callee.dynamic", "callee is a computed expression")),
+                    Some(_) => Err(Miss::receiver(
+                        "receiver.dynamic",
+                        "receiver is a computed expression",
+                    )),
+                    None => Err(Miss::new(
+                        "callee.dynamic",
+                        "callee is a computed expression",
+                    )),
                 }
             } else {
                 self.lookup(fi, r.scope, &r.path)
             };
             // A namespace object is not itself callable: use the default export.
-            if let (Ok(Found { target: Target::File(tf), confidence, .. }), ReferenceKind::Call | ReferenceKind::New) =
-                (&res, r.kind)
+            if let (
+                Ok(Found {
+                    target: Target::File(tf),
+                    confidence,
+                    ..
+                }),
+                ReferenceKind::Call | ReferenceKind::New,
+            ) = (&res, r.kind)
             {
                 res = match family {
-                    LanguageFamily::Ecmascript => self
-                        .es_export(*tf, "default", 0)
-                        .map(|f| Found { confidence: f.confidence.min(*confidence), ..f }),
-                    LanguageFamily::Python => Err(Miss::new("callee.module", "a module object is not callable")),
+                    LanguageFamily::Ecmascript => {
+                        self.es_export(*tf, "default", 0).map(|f| Found {
+                            confidence: f.confidence.min(*confidence),
+                            ..f
+                        })
+                    }
+                    LanguageFamily::Python => Err(Miss::new(
+                        "callee.module",
+                        "a module object is not callable",
+                    )),
                 };
             }
             if let Err(miss) = &res {
                 if miss.unknown_receiver {
-                    let name = r.member.as_deref().or(r.path.last().map(String::as_str)).unwrap_or("");
+                    let name = r
+                        .member
+                        .as_deref()
+                        .or(r.path.last().map(String::as_str))
+                        .unwrap_or("");
                     if let Some(found) = self.unique_method(family, name) {
                         res = Ok(found);
                     }
@@ -383,16 +526,35 @@ impl<'a> Resolver<'a> {
             let edge_kind = match (r.kind, &res) {
                 (ReferenceKind::New, _) => "INSTANTIATES",
                 // `super(...)` runs the base constructor on the same instance.
-                (ReferenceKind::Call, Ok(Found { rule: "es.call.super-constructor", .. })) => "CALLS",
-                (ReferenceKind::Call, Ok(Found { target: Target::Symbol(tf, tid), .. }))
-                    if self.files[*tf].ir.symbols[*tid as usize].kind == SymbolKind::Class =>
-                {
+                (
+                    ReferenceKind::Call,
+                    Ok(Found {
+                        rule: "es.call.super-constructor",
+                        ..
+                    }),
+                ) => "CALLS",
+                (
+                    ReferenceKind::Call,
+                    Ok(Found {
+                        target: Target::Symbol(tf, tid),
+                        ..
+                    }),
+                ) if self.files[*tf].ir.symbols[*tid as usize].kind == SymbolKind::Class => {
                     "INSTANTIATES"
                 }
                 (ReferenceKind::Call, _) => "CALLS",
                 (ReferenceKind::Jsx | ReferenceKind::Decorator, _) => "REFERENCES",
             };
-            self.record(fi, r.scope, r.kind.as_str(), &r.text, r.span.start_line, r.span.start_col, res, edge_kind);
+            self.record(
+                fi,
+                r.scope,
+                r.kind.as_str(),
+                &r.text,
+                r.span.start_line,
+                r.span.start_col,
+                res,
+                edge_kind,
+            );
         }
     }
 
@@ -408,7 +570,17 @@ impl<'a> Resolver<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn record(&mut self, fi: usize, scope: Option<u32>, kind: &str, text: &str, line: u32, col: u32, res: Res, edge_kind: &'static str) {
+    fn record(
+        &mut self,
+        fi: usize,
+        scope: Option<u32>,
+        kind: &str,
+        text: &str,
+        line: u32,
+        col: u32,
+        res: Res,
+        edge_kind: &'static str,
+    ) {
         let path = self.files[fi].path;
         let source = match scope {
             Some(s) => self.files[fi].keys[s as usize].clone(),
@@ -421,8 +593,19 @@ impl<'a> Resolver<'a> {
                     Target::External(_) => Outcome::External,
                     _ => Outcome::Resolved,
                 };
-                let evidence = Evidence { path: path.to_string(), line, col };
-                self.edge(source.clone(), target.clone(), edge_kind, found.confidence, found.rule, evidence);
+                let evidence = Evidence {
+                    path: path.to_string(),
+                    line,
+                    col,
+                };
+                self.edge(
+                    source.clone(),
+                    target.clone(),
+                    edge_kind,
+                    found.confidence,
+                    found.rule,
+                    evidence,
+                );
                 ReferenceRecord {
                     path: path.to_string(),
                     line,
@@ -444,17 +627,37 @@ impl<'a> Resolver<'a> {
                 kind: kind.to_string(),
                 text: text.to_string(),
                 source,
-                outcome: if miss.builtin { Outcome::Builtin } else { Outcome::Unresolved },
-                confidence: if miss.builtin { Confidence::Confirmed } else { Confidence::Unknown },
+                outcome: if miss.builtin {
+                    Outcome::Builtin
+                } else {
+                    Outcome::Unresolved
+                },
+                confidence: if miss.builtin {
+                    Confidence::Confirmed
+                } else {
+                    Confidence::Unknown
+                },
                 target: None,
                 rule: miss.rule.to_string(),
-                reason: if miss.builtin { None } else { Some(miss.reason) },
+                reason: if miss.builtin {
+                    None
+                } else {
+                    Some(miss.reason)
+                },
             },
         };
         self.refs.push(rec);
     }
 
-    fn edge(&mut self, src: String, dst: String, kind: &'static str, confidence: Confidence, rule: &'static str, evidence: Evidence) {
+    fn edge(
+        &mut self,
+        src: String,
+        dst: String,
+        kind: &'static str,
+        confidence: Confidence,
+        rule: &'static str,
+        evidence: Evidence,
+    ) {
         let acc = self.edges.entry((src, dst, kind)).or_insert(EdgeAcc {
             confidence,
             rule,
@@ -482,8 +685,14 @@ impl<'a> Resolver<'a> {
         // Prefer callables so `Class.method` wins over a same-named field.
         kids.iter()
             .copied()
-            .find(|k| ir.symbols[*k as usize].name == name && ir.symbols[*k as usize].kind.is_callable())
-            .or_else(|| kids.iter().copied().find(|k| ir.symbols[*k as usize].name == name))
+            .find(|k| {
+                ir.symbols[*k as usize].name == name && ir.symbols[*k as usize].kind.is_callable()
+            })
+            .or_else(|| {
+                kids.iter()
+                    .copied()
+                    .find(|k| ir.symbols[*k as usize].name == name)
+            })
     }
 
     /// A member of a class or interface, searching resolved base classes.
@@ -511,15 +720,28 @@ impl<'a> Resolver<'a> {
         let ids = self.files[fi].top.get(name)?;
         let ir = self.files[fi].ir;
         let is_type = |id: &u32| {
-            matches!(ir.symbols[*id as usize].kind, SymbolKind::Interface | SymbolKind::Type | SymbolKind::Namespace)
+            matches!(
+                ir.symbols[*id as usize].kind,
+                SymbolKind::Interface | SymbolKind::Type | SymbolKind::Namespace
+            )
         };
         // Declaration merging (interface + class, function + namespace) is
         // not ambiguity; several value declarations of one name are.
         let values: Vec<u32> = ids.iter().copied().filter(|id| !is_type(id)).collect();
         let chosen = values.first().or(ids.first()).copied()?;
-        let anonymous = ir.symbols[chosen as usize].attrs.contains_key("in_anonymous_scope");
-        let confidence = if values.len() > 1 || anonymous { Confidence::Probable } else { Confidence::Confirmed };
-        Some(Found { target: Target::Symbol(fi, chosen), confidence, rule })
+        let anonymous = ir.symbols[chosen as usize]
+            .attrs
+            .contains_key("in_anonymous_scope");
+        let confidence = if values.len() > 1 || anonymous {
+            Confidence::Probable
+        } else {
+            Confidence::Confirmed
+        };
+        Some(Found {
+            target: Target::Symbol(fi, chosen),
+            confidence,
+            rule,
+        })
     }
 
     fn enclosing_class(&self, fi: usize, scope: Option<u32>) -> Option<u32> {
@@ -557,10 +779,20 @@ impl<'a> Resolver<'a> {
         // Code directly in a class body sees the names bound in that body.
         if let Some(class) = scope.filter(|s| ir.symbols[*s as usize].kind == SymbolKind::Class) {
             if let Some(member) = self.child_named(fi, class, first) {
-                let base = Found { target: Target::Symbol(fi, member), confidence: Confidence::Confirmed, rule: "scope.class-member" };
+                let base = Found {
+                    target: Target::Symbol(fi, member),
+                    confidence: Confidence::Confirmed,
+                    rule: "scope.class-member",
+                };
                 // `@prop.setter` refers to the property it extends.
-                if python && path.len() == 2 && matches!(path[1].as_str(), "setter" | "getter" | "deleter") {
-                    return Ok(Found { rule: "py.property-accessor", ..base });
+                if python
+                    && path.len() == 2
+                    && matches!(path[1].as_str(), "setter" | "getter" | "deleter")
+                {
+                    return Ok(Found {
+                        rule: "py.property-accessor",
+                        ..base
+                    });
                 }
                 return self.descend(base, &path[1..]);
             }
@@ -570,9 +802,17 @@ impl<'a> Resolver<'a> {
         let mut cur = scope;
         while let Some(id) = cur {
             let sym = &ir.symbols[id as usize];
-            if sym.locals.binary_search_by(|l| l.as_str().cmp(first)).is_ok() {
+            if sym
+                .locals
+                .binary_search_by(|l| l.as_str().cmp(first))
+                .is_ok()
+            {
                 if let Some(child) = self.child_named(fi, id, first) {
-                    let base = Found { target: Target::Symbol(fi, child), confidence: Confidence::Confirmed, rule: "scope.nested-definition" };
+                    let base = Found {
+                        target: Target::Symbol(fi, child),
+                        confidence: Confidence::Confirmed,
+                        rule: "scope.nested-definition",
+                    };
                     return self.descend(base, &path[1..]);
                 }
                 if let Some(&imp) = file.bindings.get(&(Some(id), first)) {
@@ -586,12 +826,19 @@ impl<'a> Resolver<'a> {
                 }
                 return Err(Miss::receiver(
                     "scope.local-binding",
-                    format!("`{first}` is a local binding of `{}`; its value is not tracked", sym.qualified_name),
+                    format!(
+                        "`{first}` is a local binding of `{}`; its value is not tracked",
+                        sym.qualified_name
+                    ),
                 ));
             }
             if sym.kind == SymbolKind::Namespace {
                 if let Some(child) = self.child_named(fi, id, first) {
-                    let base = Found { target: Target::Symbol(fi, child), confidence: Confidence::Confirmed, rule: "scope.namespace-member" };
+                    let base = Found {
+                        target: Target::Symbol(fi, child),
+                        confidence: Confidence::Confirmed,
+                        rule: "scope.namespace-member",
+                    };
                     return self.descend(base, &path[1..]);
                 }
             }
@@ -600,10 +847,13 @@ impl<'a> Resolver<'a> {
 
         // Module scope.
         if scope.is_none() && file.anon_locals.contains(first) {
-            let anonymous_def = file
-                .top
-                .get(first)
-                .and_then(|ids| ids.iter().find(|id| ir.symbols[**id as usize].attrs.contains_key("in_anonymous_scope")));
+            let anonymous_def = file.top.get(first).and_then(|ids| {
+                ids.iter().find(|id| {
+                    ir.symbols[**id as usize]
+                        .attrs
+                        .contains_key("in_anonymous_scope")
+                })
+            });
             return match anonymous_def {
                 Some(&id) => {
                     let base = Found { target: Target::Symbol(fi, id), confidence: Confidence::Probable, rule: "scope.anonymous-function-definition" };
@@ -630,11 +880,23 @@ impl<'a> Resolver<'a> {
                 return self.descend(found, &path[1..]);
             }
         }
-        let builtin = if python { builtins::is_python_builtin(first) } else { builtins::is_ecmascript_global(first) };
+        let builtin = if python {
+            builtins::is_python_builtin(first)
+        } else {
+            builtins::is_ecmascript_global(first)
+        };
         if builtin {
-            return Err(Miss { rule: "builtin", reason: String::new(), builtin: true, unknown_receiver: false });
+            return Err(Miss {
+                rule: "builtin",
+                reason: String::new(),
+                builtin: true,
+                unknown_receiver: false,
+            });
         }
-        Err(Miss::new("scope.unbound", format!("no definition or import of `{first}` in this file")))
+        Err(Miss::new(
+            "scope.unbound",
+            format!("no definition or import of `{first}` in this file"),
+        ))
     }
 
     /// `this.m`, `super.m`, `self.m`, `cls.m`.
@@ -645,18 +907,45 @@ impl<'a> Resolver<'a> {
         let class_name = &self.files[fi].ir.symbols[class as usize].qualified_name;
         match path.len() {
             1 if is_super && !python => {
-                let base = self.bases.borrow().get(&(fi, class)).and_then(|b| b.first().copied());
+                let base = self
+                    .bases
+                    .borrow()
+                    .get(&(fi, class))
+                    .and_then(|b| b.first().copied());
                 match base {
-                    Some((bf, bid)) => Ok(Found { target: Target::Symbol(bf, bid), confidence: Confidence::Probable, rule: "es.call.super-constructor" }),
-                    None => Err(Miss::new("es.call.super-constructor", format!("base class of `{class_name}` is not resolved"))),
+                    Some((bf, bid)) => Ok(Found {
+                        target: Target::Symbol(bf, bid),
+                        confidence: Confidence::Probable,
+                        rule: "es.call.super-constructor",
+                    }),
+                    None => Err(Miss::new(
+                        "es.call.super-constructor",
+                        format!("base class of `{class_name}` is not resolved"),
+                    )),
                 }
             }
-            1 if first == "cls" => Ok(Found { target: Target::Symbol(fi, class), confidence: Confidence::Probable, rule: "py.call.cls" }),
-            1 if is_super => Err(Miss { rule: "builtin", reason: String::new(), builtin: true, unknown_receiver: false }),
-            1 => Err(Miss::new("receiver.instance-call", format!("calling an instance of `{class_name}`"))),
+            1 if first == "cls" => Ok(Found {
+                target: Target::Symbol(fi, class),
+                confidence: Confidence::Probable,
+                rule: "py.call.cls",
+            }),
+            1 if is_super => Err(Miss {
+                rule: "builtin",
+                reason: String::new(),
+                builtin: true,
+                unknown_receiver: false,
+            }),
+            1 => Err(Miss::new(
+                "receiver.instance-call",
+                format!("calling an instance of `{class_name}`"),
+            )),
             2 => {
                 let name = path[1].as_str();
-                let found = if is_super { self.inherited_member((fi, class), name, 0) } else { self.member((fi, class), name, 0) };
+                let found = if is_super {
+                    self.inherited_member((fi, class), name, 0)
+                } else {
+                    self.member((fi, class), name, 0)
+                };
                 let rule = match (python, is_super) {
                     (true, true) => "py.call.super-method",
                     (true, false) => "py.call.self-method",
@@ -666,12 +955,18 @@ impl<'a> Resolver<'a> {
                 match found {
                     // Dynamic dispatch may select an override in a subclass.
                     Some(((tf, tid), _)) => Ok(Found { target: Target::Symbol(tf, tid), confidence: Confidence::Probable, rule }),
-                    None => Err(Miss::new(rule, format!("no member `{name}` on `{class_name}` or its resolved base classes"))),
+                    None => Err(Miss::new(
+                        rule,
+                        format!("`{name}` is not a method or class-level attribute of `{class_name}` or its resolved base classes (attributes assigned on instances at runtime are not tracked)"),
+                    )),
                 }
             }
             _ => Err(Miss::receiver(
                 "receiver.member-type-unknown",
-                format!("the type of `{}.{}` is not statically known", path[0], path[1]),
+                format!(
+                    "the type of `{}.{}` is not statically known",
+                    path[0], path[1]
+                ),
             )),
         }
     }
@@ -683,22 +978,36 @@ impl<'a> Resolver<'a> {
             cur = match cur.target {
                 Target::Symbol(f, id) => {
                     let sym = self.sym((f, id));
-                    if !matches!(sym.kind, SymbolKind::Class | SymbolKind::Interface | SymbolKind::Namespace) {
+                    if !matches!(
+                        sym.kind,
+                        SymbolKind::Class | SymbolKind::Interface | SymbolKind::Namespace
+                    ) {
                         return Err(Miss::receiver(
                             "member.value-type-unknown",
-                            format!("`{}` is a {}; the type of its member `{seg}` is not tracked", sym.qualified_name, sym.kind.as_str()),
+                            format!(
+                                "`{}` is a {}; the type of its member `{seg}` is not tracked",
+                                sym.qualified_name,
+                                sym.kind.as_str()
+                            ),
                         ));
                     }
                     match self.member((f, id), seg, 0) {
                         Some(((tf, tid), inherited)) => Found {
                             target: Target::Symbol(tf, tid),
-                            confidence: cur.confidence.min(if inherited { Confidence::Probable } else { Confidence::Confirmed }),
+                            confidence: cur.confidence.min(if inherited {
+                                Confidence::Probable
+                            } else {
+                                Confidence::Confirmed
+                            }),
                             rule: cur.rule,
                         },
                         None => {
                             return Err(Miss::new(
                                 "member.not-found",
-                                format!("`{}` has no statically known member `{seg}`", sym.qualified_name),
+                                format!(
+                                    "`{}` has no statically known member `{seg}`",
+                                    sym.qualified_name
+                                ),
                             ))
                         }
                     }
@@ -708,10 +1017,17 @@ impl<'a> Resolver<'a> {
                         LanguageFamily::Ecmascript => self.es_export(tf, seg, 0)?,
                         LanguageFamily::Python => self.py_attr(tf, seg, 0)?,
                     };
-                    Found { confidence: found.confidence.min(cur.confidence), rule: cur.rule, ..found }
+                    Found {
+                        confidence: found.confidence.min(cur.confidence),
+                        rule: cur.rule,
+                        ..found
+                    }
                 }
                 Target::Asset(path) => {
-                    return Err(Miss::new("member.asset", format!("`{path}` is not analyzed source")));
+                    return Err(Miss::new(
+                        "member.asset",
+                        format!("`{path}` is not analyzed source"),
+                    ));
                 }
                 // Members of an external package stay attributed to the package.
                 Target::External(_) => return Ok(cur),
@@ -727,7 +1043,11 @@ impl<'a> Resolver<'a> {
             return None;
         }
         match self.methods_by_name.get(&(family, name)).map(Vec::as_slice) {
-            Some([(f, id)]) => Some(Found { target: Target::Symbol(*f, *id), confidence: Confidence::Inferred, rule: "heuristic.unique-method-name" }),
+            Some([(f, id)]) => Some(Found {
+                target: Target::Symbol(*f, *id),
+                confidence: Confidence::Inferred,
+                rule: "heuristic.unique-method-name",
+            }),
             _ => None,
         }
     }
@@ -735,7 +1055,10 @@ impl<'a> Resolver<'a> {
     /// What an import binding refers to.
     pub(crate) fn binding(&self, fi: usize, import: usize, depth: u32) -> Res {
         if depth > MAX_CHAIN {
-            return Err(Miss::new("import.chain", "import chain is cyclic or too deep"));
+            return Err(Miss::new(
+                "import.chain",
+                "import chain is cyclic or too deep",
+            ));
         }
         let imp = &self.files[fi].ir.imports[import];
         match self.files[fi].family {
@@ -748,10 +1071,18 @@ impl<'a> Resolver<'a> {
                     ImportKind::Namespace => return Ok(module),
                     ImportKind::Default => "default",
                     ImportKind::Named => imp.imported.as_deref().unwrap_or(""),
-                    _ => return Err(Miss::new("es.import.binding", "import does not bind a name")),
+                    _ => {
+                        return Err(Miss::new(
+                            "es.import.binding",
+                            "import does not bind a name",
+                        ))
+                    }
                 };
                 let found = self.es_export(tf, name, depth + 1)?;
-                Ok(Found { confidence: found.confidence.min(module.confidence), ..found })
+                Ok(Found {
+                    confidence: found.confidence.min(module.confidence),
+                    ..found
+                })
             }
             LanguageFamily::Python => match imp.kind {
                 ImportKind::Namespace => self.py_module(fi, &imp.module, imp.level),
@@ -760,28 +1091,58 @@ impl<'a> Resolver<'a> {
                     match self.py_module(fi, &imp.module, imp.level) {
                         // `from . import sub` inside a package's own
                         // `__init__`: the name can only be a submodule.
-                        Ok(Found { target: Target::File(tf), .. }) if tf == fi => {
-                            match self.modules.py_file_at(self.files[fi].dir, name) {
-                                Some(sub) => Ok(Found { target: Target::File(sub), confidence: Confidence::Confirmed, rule: "py.import.submodule" }),
-                                None => Err(Miss::new("py.import.submodule", format!("no submodule `{name}` next to `{}`", self.files[fi].path))),
-                            }
-                        }
-                        Ok(Found { target: Target::File(tf), confidence, .. }) => {
+                        Ok(Found {
+                            target: Target::File(tf),
+                            ..
+                        }) if tf == fi => match self.modules.py_file_at(self.files[fi].dir, name) {
+                            Some(sub) => Ok(Found {
+                                target: Target::File(sub),
+                                confidence: Confidence::Confirmed,
+                                rule: "py.import.submodule",
+                            }),
+                            None => Err(Miss::new(
+                                "py.import.submodule",
+                                format!("no submodule `{name}` next to `{}`", self.files[fi].path),
+                            )),
+                        },
+                        Ok(Found {
+                            target: Target::File(tf),
+                            confidence,
+                            ..
+                        }) => {
                             let found = self.py_attr(tf, name, depth + 1)?;
-                            Ok(Found { confidence: found.confidence.min(confidence), ..found })
+                            Ok(Found {
+                                confidence: found.confidence.min(confidence),
+                                ..found
+                            })
                         }
                         Ok(external) => Ok(external),
                         Err(miss) => {
                             // Namespace package: `from pkg import module`.
-                            let dotted = if imp.module.is_empty() { name.to_string() } else { format!("{}.{name}", imp.module) };
+                            let dotted = if imp.module.is_empty() {
+                                name.to_string()
+                            } else {
+                                format!("{}.{name}", imp.module)
+                            };
                             match self.py_module(fi, &dotted, imp.level) {
-                                Ok(found @ Found { target: Target::File(_), .. }) => Ok(Found { rule: "py.import.submodule", ..found }),
+                                Ok(
+                                    found @ Found {
+                                        target: Target::File(_),
+                                        ..
+                                    },
+                                ) => Ok(Found {
+                                    rule: "py.import.submodule",
+                                    ..found
+                                }),
                                 _ => Err(miss),
                             }
                         }
                     }
                 }
-                _ => Err(Miss::new("py.import.binding", "import does not bind a name")),
+                _ => Err(Miss::new(
+                    "py.import.binding",
+                    "import does not bind a name",
+                )),
             },
         }
     }
@@ -792,12 +1153,19 @@ impl<'a> Resolver<'a> {
         let key = (fi, name.to_string());
         match self.surface_memo.borrow().get(&key) {
             Some(Some(res)) => return res.clone(),
-            Some(None) => return Err(Miss::new("import.cycle", format!("`{name}` is defined by a cyclic import chain"))),
+            Some(None) => {
+                return Err(Miss::new(
+                    "import.cycle",
+                    format!("`{name}` is defined by a cyclic import chain"),
+                ))
+            }
             None => {}
         }
         self.surface_memo.borrow_mut().insert(key.clone(), None);
         let res = compute();
-        self.surface_memo.borrow_mut().insert(key, Some(res.clone()));
+        self.surface_memo
+            .borrow_mut()
+            .insert(key, Some(res.clone()));
         res
     }
 
@@ -808,11 +1176,18 @@ impl<'a> Resolver<'a> {
 
     fn es_export_uncached(&self, fi: usize, name: &str, depth: u32) -> Res {
         if depth > MAX_CHAIN {
-            return Err(Miss::new("es.export.chain", "re-export chain is cyclic or too deep"));
+            return Err(Miss::new(
+                "es.export.chain",
+                "re-export chain is cyclic or too deep",
+            ));
         }
         let file = &self.files[fi];
         let ir = file.ir;
-        if let Some(exp) = ir.exports.iter().find(|e| e.kind != ExportKind::Wildcard && e.name == name) {
+        if let Some(exp) = ir
+            .exports
+            .iter()
+            .find(|e| e.kind != ExportKind::Wildcard && e.name == name)
+        {
             return match (&exp.source, exp.kind) {
                 (Some(source), ExportKind::Namespace) => self.es_module(fi, source),
                 (Some(source), _) => {
@@ -820,19 +1195,33 @@ impl<'a> Resolver<'a> {
                     let Target::File(tf) = module.target else {
                         return Ok(module);
                     };
-                    let found = self.es_export(tf, exp.local.as_deref().unwrap_or(name), depth + 1)?;
-                    Ok(Found { confidence: found.confidence.min(module.confidence), rule: "es.export.reexport", ..found })
+                    let found =
+                        self.es_export(tf, exp.local.as_deref().unwrap_or(name), depth + 1)?;
+                    Ok(Found {
+                        confidence: found.confidence.min(module.confidence),
+                        rule: "es.export.reexport",
+                        ..found
+                    })
                 }
                 (None, _) => {
                     let Some(local) = exp.local.as_deref() else {
-                        return Err(Miss::new("es.export.expression", format!("export `{name}` of `{}` is an expression", file.path)));
+                        return Err(Miss::new(
+                            "es.export.expression",
+                            format!("export `{name}` of `{}` is an expression", file.path),
+                        ));
                     };
                     if let Some(found) = self.top_symbol(fi, local, "es.export.local") {
                         return Ok(found);
                     }
                     match file.bindings.get(&(None, local)) {
-                        Some(&imp) => self.binding(fi, imp, depth + 1).map(|f| Found { rule: "es.export.reexport", ..f }),
-                        None => Err(Miss::new("es.export.local", format!("exported name `{local}` is not declared in `{}`", file.path))),
+                        Some(&imp) => self.binding(fi, imp, depth + 1).map(|f| Found {
+                            rule: "es.export.reexport",
+                            ..f
+                        }),
+                        None => Err(Miss::new(
+                            "es.export.local",
+                            format!("exported name `{local}` is not declared in `{}`", file.path),
+                        )),
                     }
                 }
             };
@@ -841,26 +1230,45 @@ impl<'a> Resolver<'a> {
             let mut hits: Vec<Found> = Vec::new();
             for exp in ir.exports.iter().filter(|e| e.kind == ExportKind::Wildcard) {
                 let Some(source) = &exp.source else { continue };
-                let Ok(module) = self.es_module(fi, source) else { continue };
-                let Target::File(tf) = module.target else { continue };
+                let Ok(module) = self.es_module(fi, source) else {
+                    continue;
+                };
+                let Target::File(tf) = module.target else {
+                    continue;
+                };
                 if let Ok(found) = self.es_export(tf, name, depth + 1) {
                     if !hits.iter().any(|h| h.target == found.target) {
-                        hits.push(Found { confidence: found.confidence.min(module.confidence), rule: "es.export.wildcard", ..found });
+                        hits.push(Found {
+                            confidence: found.confidence.min(module.confidence),
+                            rule: "es.export.wildcard",
+                            ..found
+                        });
                     }
                 }
             }
             match hits.len() {
                 0 => {}
                 1 => return Ok(hits.remove(0)),
-                n => return Err(Miss::new("es.export.wildcard", format!("`{name}` is re-exported from {n} modules; ambiguous"))),
+                n => {
+                    return Err(Miss::new(
+                        "es.export.wildcard",
+                        format!("`{name}` is re-exported from {n} modules; ambiguous"),
+                    ))
+                }
             }
         }
         if file.commonjs {
             if let Some(found) = self.top_symbol(fi, name, "js.cjs.name-match") {
-                return Ok(Found { confidence: Confidence::Probable, ..found });
+                return Ok(Found {
+                    confidence: Confidence::Probable,
+                    ..found
+                });
             }
         }
-        Err(Miss::new("es.export.not-found", format!("`{}` has no export named `{name}`", file.path)))
+        Err(Miss::new(
+            "es.export.not-found",
+            format!("`{}` has no export named `{name}`", file.path),
+        ))
     }
 
     /// Resolve a module-level attribute of a Python module.
@@ -870,24 +1278,37 @@ impl<'a> Resolver<'a> {
 
     fn py_attr_uncached(&self, fi: usize, name: &str, depth: u32) -> Res {
         if depth > MAX_CHAIN {
-            return Err(Miss::new("py.attr.chain", "import chain is cyclic or too deep"));
+            return Err(Miss::new(
+                "py.attr.chain",
+                "import chain is cyclic or too deep",
+            ));
         }
         let file = &self.files[fi];
         if let Some(found) = self.top_symbol(fi, name, "py.module-attribute") {
             return Ok(found);
         }
         if let Some(&imp) = file.bindings.get(&(None, name)) {
-            return self.binding(fi, imp, depth + 1).map(|f| Found { rule: "py.reexport", ..f });
+            return self.binding(fi, imp, depth + 1).map(|f| Found {
+                rule: "py.reexport",
+                ..f
+            });
         }
         if let Some(found) = self.py_wildcard(fi, name, depth + 1) {
             return Ok(found);
         }
         if paths::file_name(file.path).starts_with("__init__.") {
             if let Some(sub) = self.modules.py_file_at(file.dir, name) {
-                return Ok(Found { target: Target::File(sub), confidence: Confidence::Confirmed, rule: "py.import.submodule" });
+                return Ok(Found {
+                    target: Target::File(sub),
+                    confidence: Confidence::Confirmed,
+                    rule: "py.import.submodule",
+                });
             }
         }
-        Err(Miss::new("py.module-attribute", format!("`{}` defines no module-level name `{name}`", file.path)))
+        Err(Miss::new(
+            "py.module-attribute",
+            format!("`{}` defines no module-level name `{name}`", file.path),
+        ))
     }
 
     /// A name possibly provided by `from m import *`. Always at most `Probable`.
@@ -896,13 +1317,25 @@ impl<'a> Resolver<'a> {
             return None;
         }
         let ir = self.files[fi].ir;
-        for imp in ir.imports.iter().filter(|i| i.kind == ImportKind::Wildcard && i.scope.is_none()) {
-            if let Ok(Found { target: Target::File(tf), .. }) = self.py_module(fi, &imp.module, imp.level) {
+        for imp in ir
+            .imports
+            .iter()
+            .filter(|i| i.kind == ImportKind::Wildcard && i.scope.is_none())
+        {
+            if let Ok(Found {
+                target: Target::File(tf),
+                ..
+            }) = self.py_module(fi, &imp.module, imp.level)
+            {
                 if tf == fi {
                     continue;
                 }
                 if let Ok(found) = self.py_attr(tf, name, depth + 1) {
-                    return Some(Found { confidence: found.confidence.min(Confidence::Probable), rule: "py.import.wildcard", ..found });
+                    return Some(Found {
+                        confidence: found.confidence.min(Confidence::Probable),
+                        rule: "py.import.wildcard",
+                        ..found
+                    });
                 }
             }
         }
@@ -926,14 +1359,22 @@ impl<'a> Resolver<'a> {
         }
         for k in (1..path.len()).rev() {
             let prefix = path[..k].join(".");
-            let is_loaded = loaded
-                .iter()
-                .any(|m| *m == prefix || (m.len() > prefix.len() && m.starts_with(&prefix) && m.as_bytes()[prefix.len()] == b'.'));
+            let is_loaded = loaded.iter().any(|m| {
+                *m == prefix
+                    || (m.len() > prefix.len()
+                        && m.starts_with(&prefix)
+                        && m.as_bytes()[prefix.len()] == b'.')
+            });
             if !is_loaded {
                 continue;
             }
             match self.py_module(fi, &prefix, 0) {
-                Ok(found @ Found { target: Target::File(_), .. }) => return Some(self.descend(found, &path[k..])),
+                Ok(
+                    found @ Found {
+                        target: Target::File(_),
+                        ..
+                    },
+                ) => return Some(self.descend(found, &path[k..])),
                 Ok(external) => return Some(Ok(external)),
                 Err(_) => continue,
             }

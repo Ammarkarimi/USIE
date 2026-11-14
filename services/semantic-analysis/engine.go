@@ -279,8 +279,9 @@ func (e Engine) Resolve(ctx context.Context, cfg ResolveConfig, files []ResolveF
 		if err != nil {
 			return err
 		}
-		w.Write(head)
-		w.WriteByte('\n')
+		if _, err := w.Write(append(head, '\n')); err != nil {
+			return err
+		}
 		for _, f := range files {
 			ir, err := f.Open()
 			if err != nil {
@@ -290,10 +291,12 @@ func (e Engine) Resolve(ctx context.Context, cfg ResolveConfig, files []ResolveF
 				return fmt.Errorf("stored IR for %s is not single-line JSON", f.Path)
 			}
 			path, _ := json.Marshal(f.Path)
-			w.WriteString(`{"type":"file","path":`)
-			w.Write(path)
-			w.WriteString(`,"ir":`)
-			w.Write(ir)
+			// bufio.Writer latches the first error, so checking the last
+			// write of the record is sufficient.
+			_, _ = w.WriteString(`{"type":"file","path":`)
+			_, _ = w.Write(path)
+			_, _ = w.WriteString(`,"ir":`)
+			_, _ = w.Write(ir)
 			if _, err := w.WriteString("}\n"); err != nil {
 				return err
 			}
