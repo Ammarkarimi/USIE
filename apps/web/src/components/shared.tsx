@@ -58,7 +58,7 @@ export function sourceLabel(r: Repository): string {
   }
 }
 
-export function RepoLinks({ repoId, versionId, active }: { repoId: string; versionId?: string; active: "overview" | "code" | "graph" }) {
+export function RepoLinks({ repoId, versionId, active }: { repoId: string; versionId?: string; active: "overview" | "code" | "graph" | "ask" }) {
   const q = versionId ? `?version=${versionId}` : "";
   const item = (key: typeof active, to: string, label: string) => (
     <Link to={to} className={key === active ? "rounded-md bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent" : "rounded-md px-3 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-fg"}>
@@ -70,6 +70,7 @@ export function RepoLinks({ repoId, versionId, active }: { repoId: string; versi
       {item("overview", `/repositories/${repoId}${q}`, "Overview")}
       {item("code", `/repositories/${repoId}/code${q}`, "Code")}
       {item("graph", `/repositories/${repoId}/graph${q}`, "Knowledge graph")}
+      {item("ask", `/repositories/${repoId}/ask${q}`, "Ask")}
     </nav>
   );
 }
@@ -148,4 +149,9 @@ export function useDocumentTitle(title: string) {
   useEffect(() => {
     document.title = title ? `${title} · USIE` : "USIE";
   }, [title]);
+}
+
+/** Link to the Ask page with a graph node as the question's focus. */
+export function askHref(repoId: string, versionId: string, key: string): string {
+  return `/repositories/${repoId}/ask?version=${versionId}&focus=${encodeURIComponent(key)}`;
 }

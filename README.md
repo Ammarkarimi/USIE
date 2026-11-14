@@ -31,13 +31,14 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Change impact | **experimental** | "Dependents" view: reverse reachability through calls, imports and inheritance. No risk scoring. |
 | Distributed execution | **experimental** | Several workers share one queue. No sandboxed build/test execution. |
 | Parsers for Java, C, C++, Rust, Go, C#, Kotlin | **planned** | |
-| AI reasoning, transformation, verification | **planned** | No code exists for these. |
+| AI reasoning | **experimental** | Ask questions about an analyzed version. Answers come from knowledge-graph evidence; every claim is shown as cited, inference or unsupported after the server checks its citations. Needs `ANTHROPIC_API_KEY`; off otherwise. [Design](docs/adr/0009-ai-reasoning.md). |
+| Transformation, verification | **planned** | No code exists for these. |
 | Neo4j, Kafka, Temporal, Redis, Kubernetes | **planned / deferred** | See the [ADRs](docs/adr/README.md) for why each is not used yet. |
 | Type inference, data-flow analysis, dynamic imports with computed specifiers | **unsupported** | Calls through values of unknown type are reported unresolved, or matched heuristically and marked *inferred*. |
 
 ## Quick start
 
-Requirements: Rust 1.90+, Go 1.24+, Node 20+ with pnpm 10, git, PostgreSQL
+Requirements: Rust 1.90+, Go 1.25+, Node 20+ with pnpm 10, git, PostgreSQL
 14+ server binaries.
 
 ```sh

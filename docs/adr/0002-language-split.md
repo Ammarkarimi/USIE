@@ -11,7 +11,7 @@ technology at once.
 - **Go** for services: one module, standard-library HTTP, pgx for
   PostgreSQL, straightforward process supervision.
 - **TypeScript/React** for the web application, with a typed SDK.
-- **No Python service yet.** It enters with the AI subsystem.
+- **No Python service yet.** The AI subsystem was expected to bring one; it did not need it (ADR 0009).
 
 The Go/Rust boundary is the NDJSON protocol of `usie-engine` (ADR 0006),
 covered by contract tests (`services/semantic-analysis/engine_test.go`).

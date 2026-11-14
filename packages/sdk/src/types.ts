@@ -297,3 +297,78 @@ export interface AuditEvent {
   detail: Record<string, unknown>;
   created_at: string;
 }
+
+// ---- AI reasoning ----
+
+export interface AIStatus {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  /** Tokens per organization per UTC day; 0 means no cap. */
+  daily_token_budget: number;
+  tokens_used_today: number;
+  /** What is sent to the provider. Show it to users. */
+  data_notice: string;
+}
+
+/** How a claim is backed after server-side validation. */
+export type AIClaimSupport = "evidence" | "inference" | "unsupported";
+
+export interface AIClaim {
+  statement: string;
+  support: AIClaimSupport;
+  citations: string[];
+  invalid_citations?: string[];
+}
+
+export interface AIAnswer {
+  answerable?: "yes" | "partially" | "no";
+  summary?: string;
+  claims?: AIClaim[];
+  limitations?: string[];
+  followups?: string[];
+  validation_notes?: string[];
+}
+
+export interface AIEvidence {
+  id: string;
+  kind: "overview" | "readme" | "file_index" | "symbol" | "file";
+  key?: string;
+  path?: string;
+  start_line?: number;
+  end_line?: number;
+  title: string;
+  content: string;
+  truncated?: boolean;
+}
+
+export interface AIMessage {
+  id: string;
+  seq: number;
+  role: "user" | "assistant";
+  content: string;
+  focus_key: string;
+  status: "pending" | "ok" | "error" | "refused";
+  answer: AIAnswer;
+  context: AIEvidence[];
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  latency_ms: number;
+  error: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface AIConversation {
+  id: string;
+  repository_id: string;
+  version_id: string;
+  title: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  messages?: AIMessage[];
+}

@@ -10,3 +10,4 @@
 | [0006](0006-engine-process-boundary.md) | The analysis engine is a separate unprivileged process | accepted |
 | [0007](0007-confidence-and-provenance.md) | Confidence levels and provenance on every relationship | accepted |
 | [0008](0008-authentication.md) | Sessions with CSRF tokens, API tokens, organization-scoped RBAC | accepted |
+| [0009](0009-ai-reasoning.md) | Grounded AI answers: evidence retrieval, validated citations, no model tools | accepted |

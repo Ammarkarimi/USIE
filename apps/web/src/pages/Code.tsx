@@ -7,7 +7,7 @@ import { keyLabel, keyPath } from "@usie/sdk";
 import { api } from "../api";
 import { useAsync } from "../hooks";
 import { PageHeader } from "../App";
-import { RepoLinks, VersionPicker, useDocumentTitle, useRepoVersion } from "../components/shared";
+import { RepoLinks, VersionPicker, askHref, useDocumentTitle, useRepoVersion } from "../components/shared";
 import { monacoLanguage } from "../monaco";
 
 export default function CodePage() {
@@ -111,7 +111,9 @@ function FileView({ versionId, repoId, path, line, onOpen }: { versionId: string
     ed.revealLineInCenter(l);
     ed.setSelection({ startLineNumber: l, startColumn: 1, endLineNumber: l, endColumn: 1 });
   };
-  useEffect(() => reveal(line), [line, detail.data]);
+  useEffect(() => {
+    reveal(line);
+  }, [line, detail.data]);
 
   const unresolved = useMemo(() => (refs.data?.references ?? []).filter((r) => r.outcome === "unresolved"), [refs.data]);
   const shownRefs = useMemo(() => (refs.data?.references ?? []).filter((r) => !outcome || r.outcome === outcome), [refs.data, outcome]);
@@ -169,7 +171,7 @@ function FileView({ versionId, repoId, path, line, onOpen }: { versionId: string
           {panel === "symbols" && (
             symbols.length === 0 ? <p className="p-3 text-sm text-muted">{file.parse_status === "parsed" || file.parse_status === "parsed_with_errors" ? "No symbols declared in this file." : "This file was not parsed."}</p> : (
               <ul className="divide-y divide-border">
-                {symbols.map((s) => <SymbolRow key={s.key} s={s} onReveal={() => reveal(s.start_line)} graphHref={graphLink(s.key)} />)}
+                {symbols.map((s) => <SymbolRow key={s.key} s={s} onReveal={() => reveal(s.start_line)} graphHref={graphLink(s.key)} askHref={askHref(repoId, versionId, s.key)} />)}
               </ul>
             )
           )}
@@ -203,7 +205,7 @@ function FileView({ versionId, repoId, path, line, onOpen }: { versionId: string
   );
 }
 
-function SymbolRow({ s, onReveal, graphHref }: { s: GraphNode; onReveal: () => void; graphHref: string }) {
+function SymbolRow({ s, onReveal, graphHref, askHref }: { s: GraphNode; onReveal: () => void; graphHref: string; askHref: string }) {
   const depth = (s.qualified_name ?? s.name).split(".").length - 1;
   return (
     <li className="px-3 py-1.5 text-sm" style={{ paddingLeft: `${12 + depth * 12}px` }}>
@@ -212,7 +214,10 @@ function SymbolRow({ s, onReveal, graphHref }: { s: GraphNode; onReveal: () => v
           <span className="text-xs text-muted">{s.kind}</span> <span className="font-mono">{s.name}</span>
           {s.exported && <span className="ml-1 text-xs text-accent">exported</span>}
         </button>
-        <Link to={graphHref} className="shrink-0 text-xs text-accent hover:underline">graph</Link>
+        <span className="flex shrink-0 gap-2 text-xs">
+          <Link to={graphHref} className="text-accent hover:underline">graph</Link>
+          <Link to={askHref} className="text-accent hover:underline" title="Ask a question about this symbol">ask</Link>
+        </span>
       </div>
       {s.signature && <div className="truncate font-mono text-xs text-muted" title={s.signature}>{s.signature}</div>}
       {s.doc && <div className="truncate text-xs text-muted" title={s.doc}>{s.doc}</div>}

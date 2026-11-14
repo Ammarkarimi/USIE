@@ -39,7 +39,9 @@ this. PostgreSQL row-level security is a planned second layer.
 | ExecutionWorker | `workers` | implemented |
 | AuditEvent | `audit_events` | implemented |
 | AnalysisResult | `repository_versions.stats` | implemented as measured statistics per version |
-| CodeTransformation, VerificationRun, TestResult, AIConversation, AIRecommendation, BuildArtifact | — | planned; not created until the subsystems exist |
+| AIConversation | `ai_conversations`, `ai_messages` | implemented (migration 0002); each answer stores the evidence sent, the validated answer, model and token usage |
+| AIRecommendation | — | planned; answers carry suggested follow-up questions, not stored recommendations |
+| CodeTransformation, VerificationRun, TestResult, BuildArtifact | — | planned; not created until the subsystems exist |
 
 ## Graph tables
 

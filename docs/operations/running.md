@@ -2,7 +2,7 @@
 
 ## Local development
 
-Requirements: Rust 1.90+, Go 1.24+, Node 20+ with pnpm 10, git, and
+Requirements: Rust 1.90+, Go 1.25+, Node 20+ with pnpm 10, git, and
 PostgreSQL 14+ server binaries (`initdb`, `pg_ctl`).
 
 ```sh

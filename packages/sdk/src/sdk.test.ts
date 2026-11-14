@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, UsieClient, keyLabel, keyPath, parseKey } from "./index";
+import { ApiError, UsieClient, keyLabel, keyPath, parseKey, segmentAnswer } from "./index";
 
 function fakeFetch(handler: (url: string, init: RequestInit) => Response) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -65,5 +65,37 @@ describe("node keys", () => {
     expect(keyPath("sym:a/b.ts#f")).toBe("a/b.ts");
     expect(keyPath("ext:npm:x")).toBeUndefined();
     expect(keyLabel("sym:a/b.ts#C.f")).toBe("C.f (a/b.ts)");
+  });
+});
+
+describe("segmentAnswer", () => {
+  it("separates text, inline code and citations", () => {
+    expect(segmentAnswer("`run` calls `helper` [C2] and [C10].")).toEqual([
+      { type: "code", text: "run" },
+      { type: "text", text: " calls " },
+      { type: "code", text: "helper" },
+      { type: "text", text: " " },
+      { type: "citation", id: "C2" },
+      { type: "text", text: " and " },
+      { type: "citation", id: "C10" },
+      { type: "text", text: "." },
+    ]);
+  });
+
+  it("leaves markup and malformed references as text", () => {
+    expect(segmentAnswer("<img src=x onerror=alert(1)> [C] [c2]")).toEqual([
+      { type: "text", text: "<img src=x onerror=alert(1)> [C] [c2]" },
+    ]);
+  });
+});
+
+describe("AI client", () => {
+  it("posts questions with the CSRF token", async () => {
+    const { fn, calls } = fakeFetch(() => new Response(JSON.stringify({ id: "c1", messages: [] }), { status: 202 }));
+    const client = new UsieClient({ fetch: fn });
+    client.csrfToken = "t";
+    await client.askFollowup("c1", { question: "why?" });
+    expect(calls[0]!.url).toBe("/api/v1/ai/conversations/c1/messages");
+    expect((calls[0]!.init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("t");
   });
 });

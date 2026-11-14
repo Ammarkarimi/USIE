@@ -1,5 +1,5 @@
 import type {
-  ApiToken, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, FileDetail, GraphDiff, GraphNode,
+  AIConversation, AIStatus, ApiToken, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, FileDetail, GraphDiff, GraphNode,
   GraphStats, Job, JobStatus, Reference, Repository, Session, SourceFile, SourceKind, Subgraph, SystemInfo, Version,
   Worker, Workspace,
 } from "./types";
@@ -156,6 +156,18 @@ export class UsieClient {
   listWorkers = () => this.request<{ workers: Worker[] }>("GET", "/workers").then((r) => r.workers);
   listAudit = (q: { before?: number; limit?: number } = {}) =>
     this.request<{ events: AuditEvent[] }>("GET", "/audit-events", { query: q }).then((r) => r.events);
+
+  // ---- AI reasoning ----
+  aiStatus = () => this.request<AIStatus>("GET", "/ai/status");
+  listConversations = (q: { repository_id?: string; limit?: number } = {}) =>
+    this.request<{ conversations: AIConversation[] }>("GET", "/ai/conversations", { query: q }).then((r) => r.conversations);
+  getConversation = (id: string) => this.request<AIConversation>("GET", `/ai/conversations/${id}`);
+  /** Starts a conversation; the answer is pending until the conversation is polled again. */
+  ask = (input: { version_id: string; question: string; focus_key?: string }) =>
+    this.request<AIConversation>("POST", "/ai/conversations", { body: input });
+  askFollowup = (conversationId: string, input: { question: string; focus_key?: string }) =>
+    this.request<AIConversation>("POST", `/ai/conversations/${conversationId}/messages`, { body: input });
+  deleteConversation = (id: string) => this.request<void>("DELETE", `/ai/conversations/${id}`);
 
   /**
    * Follow a job's state as Server-Sent Events (browser session only).

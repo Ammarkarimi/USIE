@@ -42,6 +42,7 @@ and are not part of the running system.
 | Knowledge graph | `services/knowledge-graph` | `Store` interface; PostgreSQL and in-memory implementations sharing one conformance test suite. |
 | Orchestration | `services/execution-orchestrator` | Job queue (leases, heartbeats, retries, cancellation), worker loop, `usie-worker` binary. |
 | Pipeline | `internal/pipeline` | The `analyze_version` job. |
+| AI reasoning | `services/ai-reasoning` | Evidence retrieval from the graph and source, provider interface (Claude), citation validation, conversations, budgets ([ADR 0009](../adr/0009-ai-reasoning.md)). |
 | API gateway | `services/api-gateway` | HTTP API (`openapi.yaml`), `usie-api` binary. |
 | Data access | `internal/store`, `database/` | Tenant-scoped queries; embedded forward-only migrations. |
 | Web | `apps/web`, `packages/sdk`, `packages/design-system` | React application, typed client, shared components and tokens. |
@@ -101,7 +102,6 @@ backend is planned ([ADR 0004](../adr/0004-blob-storage.md)).
 These appear in the product specification and are **planned**; there is no
 code for them beyond what is listed:
 
-- AI reasoning (retrieval over the graph, provider abstraction).
 - Transformation and verification (sandboxed builds and tests).
 - Parsers for Java, C, C++, Rust, Go, C# and Kotlin (files are detected and
   inventoried only).
