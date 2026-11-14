@@ -1,0 +1,9 @@
+@import "../../../packages/design-system/src/tokens.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body { font-size: 14px; }
+code, pre, .font-mono { font-feature-settings: "liga" 0; }
+:focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 2px; }

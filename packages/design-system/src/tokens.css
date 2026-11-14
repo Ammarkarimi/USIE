@@ -1,0 +1,46 @@
+/*
+ * USIE design tokens. Colours are RGB channels so Tailwind can apply opacity
+ * (`bg-surface/60`). Light is the default; dark applies with the `dark`
+ * class on <html>, which the theme toggle sets (following the OS preference
+ * until the user picks one).
+ */
+:root {
+  --c-bg: 248 249 251;
+  --c-surface: 255 255 255;
+  --c-surface-2: 241 243 246;
+  --c-border: 222 226 232;
+  --c-text: 22 27 34;
+  --c-muted: 92 101 115;
+  --c-accent: 37 99 235;
+  --c-accent-fg: 255 255 255;
+  --c-ok: 21 128 61;
+  --c-warn: 180 83 9;
+  --c-danger: 190 18 60;
+  --c-info: 3 105 161;
+  /* Confidence levels: distinct in hue and lightness so they are not colour-only. */
+  --c-confirmed: 21 128 61;
+  --c-probable: 37 99 235;
+  --c-inferred: 180 83 9;
+  --c-unknown: 107 114 128;
+  color-scheme: light;
+}
+
+:root.dark {
+  --c-bg: 13 17 23;
+  --c-surface: 22 27 34;
+  --c-surface-2: 30 36 45;
+  --c-border: 48 54 61;
+  --c-text: 230 237 243;
+  --c-muted: 139 148 158;
+  --c-accent: 88 166 255;
+  --c-accent-fg: 13 17 23;
+  --c-ok: 63 185 80;
+  --c-warn: 210 153 34;
+  --c-danger: 248 81 73;
+  --c-info: 56 189 248;
+  --c-confirmed: 63 185 80;
+  --c-probable: 88 166 255;
+  --c-inferred: 210 153 34;
+  --c-unknown: 139 148 158;
+  color-scheme: dark;
+}

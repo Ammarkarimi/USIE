@@ -19,5 +19,6 @@
 apps/*/dist/
 bin/
 coverage/
+dist/
 node_modules/
 packages/*/dist/
