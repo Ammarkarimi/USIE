@@ -44,7 +44,7 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request, _ *store.Prin
 	list := make([]map[string]string, 0, len(features))
 	for _, f := range features {
 		if f["id"] == "ai-reasoning" && (s.AI == nil || !s.AI.Enabled()) {
-			f = map[string]string{"id": f["id"], "status": "unsupported", "detail": "Implemented but not enabled here: no AI provider is configured (set ANTHROPIC_API_KEY)."}
+			f = map[string]string{"id": f["id"], "status": "unsupported", "detail": "Implemented but not enabled here: no AI provider is configured (set OPENAI_API_KEY)."}
 		}
 		list = append(list, f)
 	}

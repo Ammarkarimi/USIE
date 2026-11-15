@@ -46,9 +46,11 @@ type Config struct {
 
 	RateLimitPerMinute     int
 	AuthRateLimitPerMinute int
-	// AI reasoning. AIProvider is "anthropic" or "none"; it defaults to
-	// "anthropic" when ANTHROPIC_API_KEY is set and "none" otherwise.
+	// AI reasoning. AIProvider is "openai", "anthropic" or "none". It
+	// defaults to "openai" when OPENAI_API_KEY is set, otherwise to
+	// "anthropic" when ANTHROPIC_API_KEY is set, otherwise to "none".
 	AIProvider            string
+	OpenAIAPIKey          string
 	AnthropicAPIKey       string
 	AIModel               string
 	AIEffort              string
@@ -126,16 +128,26 @@ func Load() (Config, error) {
 	c.EngineTimeout = duration("USIE_ENGINE_TIMEOUT", 30*time.Minute)
 	c.RateLimitPerMinute = int(integer("USIE_RATE_LIMIT_PER_MINUTE", 600))
 	c.AuthRateLimitPerMinute = int(integer("USIE_AUTH_RATE_LIMIT_PER_MINUTE", 10))
+	c.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
 	c.AnthropicAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 	c.AIProvider = os.Getenv("USIE_AI_PROVIDER")
 	if c.AIProvider == "" {
-		c.AIProvider = "none"
-		if c.AnthropicAPIKey != "" {
+		switch {
+		case c.OpenAIAPIKey != "":
+			c.AIProvider = "openai"
+		case c.AnthropicAPIKey != "":
 			c.AIProvider = "anthropic"
+		default:
+			c.AIProvider = "none"
 		}
 	}
-	c.AIModel = env("USIE_AI_MODEL", "claude-opus-5-5")
+	// Empty means the provider's default model.
+	c.AIModel = os.Getenv("USIE_AI_MODEL")
+	// "off" sends no effort parameter (for models without reasoning).
 	c.AIEffort = env("USIE_AI_EFFORT", "medium")
+	if c.AIEffort == "off" {
+		c.AIEffort = ""
+	}
 	c.AIDailyTokenBudget = integer("USIE_AI_DAILY_TOKEN_BUDGET", 2_000_000)
 	c.AIUserRequestsPerHour = int(integer("USIE_AI_USER_REQUESTS_PER_HOUR", 30))
 	c.AIMaxConcurrent = int(integer("USIE_AI_MAX_CONCURRENT", 4))
@@ -161,12 +173,16 @@ func Load() (Config, error) {
 	}
 	switch c.AIProvider {
 	case "none":
+	case "openai":
+		if c.OpenAIAPIKey == "" {
+			return c, fmt.Errorf("USIE_AI_PROVIDER=openai requires OPENAI_API_KEY")
+		}
 	case "anthropic":
 		if c.AnthropicAPIKey == "" {
 			return c, fmt.Errorf("USIE_AI_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
 		}
 	default:
-		return c, fmt.Errorf("USIE_AI_PROVIDER must be anthropic or none")
+		return c, fmt.Errorf("USIE_AI_PROVIDER must be openai, anthropic or none")
 	}
 	if c.DataDir, err = filepath.Abs(c.DataDir); err != nil {
 		return c, err

@@ -28,10 +28,11 @@ values stop the process at startup with a message naming the variable.
 | `USIE_RATE_LIMIT_PER_MINUTE` | `600` | Requests per client IP. |
 | `USIE_AUTH_RATE_LIMIT_PER_MINUTE` | `10` | Login/registration attempts per client IP. |
 | `USIE_WORKER_METRICS_ADDR` | — | If set, the worker serves `/metrics` and `/healthz` here. |
-| `ANTHROPIC_API_KEY` | — | Enables AI answers through Claude (API process only). Store it as a secret. |
-| `USIE_AI_PROVIDER` | `anthropic` if a key is set, else `none` | `anthropic` or `none`. |
-| `USIE_AI_MODEL` | `claude-opus-5-5` | Model identifier sent to the provider. |
-| `USIE_AI_EFFORT` | `medium` | `low`, `medium`, `high`, `xhigh` or `max`. Higher costs more and takes longer. |
+| `OPENAI_API_KEY` | — | Enables AI answers through OpenAI (API process only). Store it as a secret. |
+| `ANTHROPIC_API_KEY` | — | Alternative: AI answers through Claude, used when no OpenAI key is set. |
+| `USIE_AI_PROVIDER` | `openai` if `OPENAI_API_KEY` is set, else `anthropic` if `ANTHROPIC_API_KEY` is set, else `none` | `openai`, `anthropic` or `none`. |
+| `USIE_AI_MODEL` | `gpt-6-astra` (OpenAI) / `claude-opus-5-5` (Anthropic) | Model identifier sent to the provider. It must support structured outputs. |
+| `USIE_AI_EFFORT` | `medium` | Reasoning effort: `low`, `medium`, `high`, `xhigh` or `max` (OpenAI also accepts `none` and `minimal` where the model does). `off` sends none, for models without reasoning. Higher costs more and takes longer. |
 | `USIE_AI_DAILY_TOKEN_BUDGET` | `2000000` | Tokens per organization per UTC day (input, output and cache reads). |
 | `USIE_AI_USER_REQUESTS_PER_HOUR` | `30` | Questions per user per hour. |
 | `USIE_AI_MAX_CONCURRENT` | `4` | Answers generated at the same time by one API process. |

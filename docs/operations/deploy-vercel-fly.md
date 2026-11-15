@@ -56,7 +56,7 @@ external database and an object-storage blob backend (ADR 0004).
    `{"status":"ready"}`; use `fly logs` if not.
 9. Immediately create the first account at https://usie-eight.vercel.app:
    in `first-user` mode the first registration becomes the owner.
-10. Optional — AI answers: `fly secrets set ANTHROPIC_API_KEY=<key>` (Fly
+10. Optional — AI answers: `fly secrets set OPENAI_API_KEY=<key>` (Fly
     restarts the machine). Without it, the Ask page says AI is not enabled.
     Answers are generated asynchronously and polled, so Vercel's proxy
     timeout does not limit them.

@@ -48,8 +48,15 @@ func main() {
 		Cfg: cfg, Store: st, Queue: orchestrator.NewQueue(pool), Graph: graph.NewPostgres(pool), Blobs: blobs,
 		Log: log, Version: runtime.Version, WebDir: os.Getenv("USIE_WEB_DIR"),
 	}
-	if cfg.AIProvider == "anthropic" {
-		provider, err := ai.NewAnthropic(ai.AnthropicConfig{APIKey: cfg.AnthropicAPIKey, Model: cfg.AIModel, Effort: cfg.AIEffort})
+	if cfg.AIProvider != "none" {
+		var provider ai.Provider
+		var err error
+		switch cfg.AIProvider {
+		case "openai":
+			provider, err = ai.NewOpenAI(ai.OpenAIConfig{APIKey: cfg.OpenAIAPIKey, Model: cfg.AIModel, ReasoningEffort: cfg.AIEffort})
+		case "anthropic":
+			provider, err = ai.NewAnthropic(ai.AnthropicConfig{APIKey: cfg.AnthropicAPIKey, Model: cfg.AIModel, Effort: cfg.AIEffort})
+		}
 		if err != nil {
 			log.Error("AI provider configuration is invalid", "error", err.Error())
 			os.Exit(2)

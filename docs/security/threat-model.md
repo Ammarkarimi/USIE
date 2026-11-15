@@ -20,7 +20,7 @@ API tokens), and the integrity of the hosts running USIE.
 | Privilege escalation | Role checks per route from one table that the OpenAPI test cross-checks; local paths require admin; token role capped by owner role; denials audited. | `routes.go` |
 | Repudiation | Append-only audit trail of security-relevant actions with actor, IP and request id. | `audit_events` |
 | Prompt injection through repository content | Evidence is framed as untrusted data inside a random per-request boundary; item delimiters in content are neutralized; the system prompt says not to follow instructions in evidence; the model has **no tools** and its output is only displayed; citations are checked server-side and unbacked claims are marked unsupported; answers are rendered as text, never HTML. | `services/ai-reasoning`, ADR 0009 |
-| Source code sent to a third party | AI is off unless a provider key is configured; the interface states what is sent and to whom before every question; only the asking organization's evidence is sent. | `ai/status`, Ask page |
+| Source code sent to a third party | AI is off unless a provider key is configured; OpenAI requests are sent with `store: false`; the interface states what is sent and to whom before every question; only the asking organization's evidence is sent. | `ai/status`, Ask page |
 | AI cost abuse | Per-organization daily token budget, per-user hourly limit, bounded concurrency and evidence size; viewers cannot ask; questions are audited (length only, not text). | `services/ai-reasoning` |
 | Information leakage in errors | Internal errors return a generic message and request id; details only in logs. | `writeError` |
 

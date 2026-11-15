@@ -42,7 +42,7 @@ export function AskPage() {
       </div>
       {!status.data.enabled ? (
         <EmptyState title="AI answers are not enabled on this installation">
-          An administrator can enable them by configuring an AI provider (set <code className="font-mono">ANTHROPIC_API_KEY</code> for the API service).
+          An administrator can enable them by configuring an AI provider (set <code className="font-mono">OPENAI_API_KEY</code> for the API service).
         </EmptyState>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-[16rem_1fr]">

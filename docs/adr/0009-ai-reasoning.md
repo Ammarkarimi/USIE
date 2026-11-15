@@ -24,12 +24,20 @@ an AI assumption as verified fact. Repository content is untrusted.
   close it; item delimiters inside content are neutralized; the system prompt
   states that evidence is untrusted data.
 - **Provider interface.** `ai.Provider` has one method that turns a prompt and
-  a JSON schema into JSON. The implementation uses Claude through the official
-  Go SDK: `claude-opus-5-5`, effort `medium`, structured output, prompt
-  caching of the system prompt and conversation prefix, and Anthropic's
-  server-side refusal fallback (a declined request is re-run on a fallback
-  model chosen by refusal category). All of this is configurable; a
-  different provider implements the same interface.
+  a JSON schema into JSON. Two implementations use the providers' official Go
+  SDKs:
+  - **OpenAI (default when `OPENAI_API_KEY` is set):** Chat Completions with
+    strict structured outputs (`json_schema`), `gpt-6-astra` (OpenAI's
+    recommended model for complex reasoning and coding), reasoning effort
+    `medium`, a stable prompt-cache key, and `store: false` so completions are
+    not kept for later retrieval. A refusal in the message or a
+    `content_filter` stop is recorded as a refusal; a `length` stop as an
+    incomplete answer.
+  - **Anthropic (alternative):** `claude-opus-5-5`, effort `medium`,
+    structured output, prompt caching, and server-side refusal fallback.
+
+  Model and effort are configurable. The SDK release is the newest that
+  builds on Go 1.25 (openai-go v3.74.0); later releases need Go 1.26.
 - **Asynchronous answers with limits.** Asking stores the question and a
   pending answer, generation runs in the API process, and the client polls.
   Limits: tokens per organization per day, questions per user per hour,
