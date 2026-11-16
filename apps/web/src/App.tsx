@@ -11,6 +11,7 @@ import { Jobs } from "./pages/Jobs";
 import { Workers } from "./pages/Workers";
 import { Settings } from "./pages/Settings";
 import { AskPage } from "./pages/Ask";
+import { ImpactPage } from "./pages/Impact";
 
 // Monaco and Cytoscape are large; load them only when those views open.
 const CodePage = lazy(() => import("./pages/Code"));
@@ -93,6 +94,7 @@ export function App() {
             <Route path="/repositories/:repoId/code" element={<CodePage />} />
             <Route path="/repositories/:repoId/graph" element={<GraphPage />} />
             <Route path="/repositories/:repoId/ask" element={<AskPage />} />
+            <Route path="/repositories/:repoId/impact" element={<ImpactPage />} />
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/workers" element={<Workers />} />
             <Route path="/settings" element={<Settings />} />

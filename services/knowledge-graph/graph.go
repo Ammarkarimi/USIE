@@ -182,6 +182,13 @@ type Store interface {
 	// Subgraph returns all edges of the given kinds between nodes of the given kinds.
 	Subgraph(ctx context.Context, s Scope, nodeKinds []string, f EdgeFilter, maxEdges int) (Subgraph, error)
 	Diff(ctx context.Context, base, head Scope, sampleLimit int) (Diff, error)
+	// NodesByKeys returns the nodes with the given keys, in key order;
+	// unknown keys are skipped.
+	NodesByKeys(ctx context.Context, s Scope, keys []string) ([]Node, error)
+	// Incoming returns the relationships that point at the given nodes and
+	// pass the filter, ordered by (dst, src, kind), and their source nodes.
+	// At most limit relationships are returned; truncated reports more.
+	Incoming(ctx context.Context, s Scope, ids []int32, f EdgeFilter, limit int) (edges []Edge, sources []Node, truncated bool, err error)
 }
 
 const (

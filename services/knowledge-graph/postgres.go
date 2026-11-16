@@ -409,3 +409,69 @@ func (p *Postgres) Diff(ctx context.Context, base, head Scope, sampleLimit int) 
 	err := edgeSet(swapped, &d.EdgesRemoved, &d.RemovedEdges)
 	return d, err
 }
+
+func (p *Postgres) NodesByKeys(ctx context.Context, s Scope, keys []string) ([]Node, error) {
+	if err := p.exists(ctx, s); err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return []Node{}, nil
+	}
+	rows, err := p.pool.Query(ctx, `SELECT `+nodeColumns+` FROM graph_nodes WHERE organization_id = $1 AND version_id = $2 AND key = ANY($3) ORDER BY key COLLATE "C"`,
+		s.OrganizationID, s.VersionID, keys)
+	if err != nil {
+		return nil, err
+	}
+	return collectNodes(rows)
+}
+
+func (p *Postgres) Incoming(ctx context.Context, s Scope, ids []int32, f EdgeFilter, limit int) ([]Edge, []Node, bool, error) {
+	if err := p.exists(ctx, s); err != nil {
+		return nil, nil, false, err
+	}
+	if len(ids) == 0 || limit <= 0 {
+		return []Edge{}, []Node{}, false, nil
+	}
+	kinds := f.Kinds
+	if kinds == nil {
+		kinds = []string{}
+	}
+	rows, err := p.pool.Query(ctx, `
+		SELECT src, dst, kind, confidence, rule, evidence_path, evidence_line, occurrences FROM graph_relationships
+		 WHERE organization_id = $1 AND version_id = $2 AND dst = ANY($3)
+		   AND (cardinality($4::text[]) = 0 OR kind = ANY($4)) AND confidence = ANY($5)
+		 ORDER BY dst, src, kind COLLATE "C" LIMIT $6`,
+		s.OrganizationID, s.VersionID, ids, kinds, ConfidencesAtLeast(f.MinConfidence), limit+1)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	edges, err := collectEdges(rows)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	truncated := len(edges) > limit
+	if truncated {
+		edges = edges[:limit]
+	}
+	srcIDs := make([]int32, 0, len(edges))
+	seen := map[int32]bool{}
+	for _, e := range edges {
+		if !seen[e.Src] {
+			seen[e.Src] = true
+			srcIDs = append(srcIDs, e.Src)
+		}
+	}
+	rows, err = p.pool.Query(ctx, `SELECT `+nodeColumns+` FROM graph_nodes WHERE organization_id = $1 AND version_id = $2 AND id = ANY($3) ORDER BY id`,
+		s.OrganizationID, s.VersionID, srcIDs)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	nodes, err := collectNodes(rows)
+	if edges == nil {
+		edges = []Edge{}
+	}
+	if nodes == nil {
+		nodes = []Node{}
+	}
+	return edges, nodes, truncated, err
+}

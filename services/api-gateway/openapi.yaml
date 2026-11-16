@@ -2042,6 +2042,83 @@ paths:
         - session: []
         - token: []
       x-min-role: "viewer"
+  "/versions/{id}/impact":
+    post:
+      tags:
+        - "Change impact"
+      summary: "Impact of a change on this version: changed declarations, their dependents, the tests that reach them, and an explained risk score."
+      description: |
+        The change is given as node keys, whole files, a unified diff that applies to this version, a base version of the same repository (what changed since then), or any combination. Diff hunks map to the innermost declarations whose lines they touch. Dependents are found by following CALLS, INSTANTIATES, REFERENCES, EXTENDS, IMPLEMENTS and IMPORTS relationships backwards, keeping for each dependent the shortest path and the weakest confidence along it. The risk score is a weighted sum of the listed factors; it ranks changes and is not a probability of failure.
+      operationId: "post_versions_id_impact"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/ImpactRequest"
+      responses:
+        "200":
+          description: "Impact analysis."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  version_id:
+                    type: "string"
+                  base_version_id:
+                    type: "string"
+                  impact:
+                    $ref: "#/components/schemas/Impact"
+                required: ["version_id", "impact"]
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version (or the base version) has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
   "/jobs":
     get:
       tags:
@@ -2738,6 +2815,129 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    ImpactRequest:
+      type: "object"
+      properties:
+        symbols:
+          type: "array"
+          maxItems: 500
+          items:
+            type: "string"
+          description: "Node keys treated as changed."
+        files:
+          type: "array"
+          maxItems: 500
+          items:
+            type: "string"
+          description: "Repository paths whose declarations are all treated as changed."
+        diff:
+          type: "string"
+          description: "Unified diff (git diff / diff -u) that applies to this version."
+        base_version_id:
+          type: "string"
+          format: "uuid"
+          description: "An earlier analyzed version of the same repository; changes since it are analyzed."
+        depth:
+          type: "integer"
+          minimum: 1
+          maximum: 6
+          default: 3
+        min_confidence:
+          type: "string"
+          enum: ["confirmed", "probable", "inferred"]
+          default: "probable"
+      additionalProperties: false
+    ImpactNode:
+      type: "object"
+      properties:
+        node:
+          $ref: "#/components/schemas/Node"
+        distance:
+          type: "integer"
+        confidence:
+          type: "string"
+          enum: ["confirmed", "probable", "inferred"]
+        via:
+          type: "array"
+          items:
+            type: "string"
+          description: "Node keys from this dependent to the changed node."
+        kinds:
+          type: "array"
+          items:
+            type: "string"
+          description: "Relationship kinds along via."
+        test:
+          type: "boolean"
+    Impact:
+      type: "object"
+      properties:
+        changed:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              node:
+                $ref: "#/components/schemas/Node"
+              reason:
+                type: "string"
+        unmatched:
+          type: "array"
+          items:
+            type: "string"
+        affected:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ImpactNode"
+        tests:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ImpactNode"
+        untested_changes:
+          type: "array"
+          items:
+            type: "string"
+        affected_files:
+          type: "integer"
+        risk:
+          type: "object"
+          properties:
+            score:
+              type: "integer"
+              minimum: 0
+              maximum: 100
+            level:
+              type: "string"
+              enum: ["low", "medium", "high"]
+            note:
+              type: "string"
+            factors:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  id:
+                    type: "string"
+                  label:
+                    type: "string"
+                  value:
+                    type: "number"
+                  weight:
+                    type: "number"
+                  points:
+                    type: "number"
+                  explanation:
+                    type: "string"
+        depth:
+          type: "integer"
+        min_confidence:
+          type: "string"
+        truncated:
+          type: "boolean"
+        limitations:
+          type: "array"
+          items:
+            type: "string"
     Error:
       type: "object"
       properties:

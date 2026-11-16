@@ -41,6 +41,7 @@ func routes() []route {
 		{Method: "GET", Path: v + "/versions/{id}/graph/neighborhood", MinRole: "viewer", Handler: (*Server).graphNeighborhood},
 		{Method: "GET", Path: v + "/versions/{id}/graph/files", MinRole: "viewer", Handler: (*Server).graphFiles},
 		{Method: "GET", Path: v + "/versions/{id}/graph/diff", MinRole: "viewer", Handler: (*Server).graphDiff},
+		{Method: "POST", Path: v + "/versions/{id}/impact", MinRole: "viewer", Handler: (*Server).analyzeImpact},
 
 		{Method: "GET", Path: v + "/jobs", MinRole: "viewer", Handler: (*Server).listJobs},
 		{Method: "GET", Path: v + "/jobs/{id}", MinRole: "viewer", Handler: (*Server).getJob},

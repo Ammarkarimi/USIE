@@ -6,7 +6,7 @@ import { api } from "../api";
 import { useAsync } from "../hooks";
 import { PageHeader } from "../App";
 import { GraphCanvas } from "../components/GraphCanvas";
-import { EdgeTable, RepoLinks, VersionPicker, askHref, useDocumentTitle, useRepoVersion } from "../components/shared";
+import { EdgeTable, RepoLinks, VersionPicker, askHref, impactHref, useDocumentTitle, useRepoVersion } from "../components/shared";
 
 type Mode = "explore" | "dependents" | "files";
 
@@ -226,7 +226,7 @@ function Explorer({ versionId, repoId, nodeKey, dependents, onKey }: { versionId
       </div>
       <aside className="min-h-0 overflow-auto border-l border-border bg-surface" aria-label="Node details">
         {focus ? (
-          <NodePanel node={focus} sub={sub.data!} nodes={nodes} dependents={dependents} codeLink={codeLink} askLink={askHref(repoId, versionId, focus.key)} onSelect={(n) => onKey(n.key)} />
+          <NodePanel node={focus} sub={sub.data!} nodes={nodes} dependents={dependents} codeLink={codeLink} askLink={askHref(repoId, versionId, focus.key)} impactLink={impactHref(repoId, versionId, focus.key)} onSelect={(n) => onKey(n.key)} />
         ) : (
           <p className="p-4 text-sm text-muted">Select a node to see its details and relationships.</p>
         )}
@@ -235,7 +235,7 @@ function Explorer({ versionId, repoId, nodeKey, dependents, onKey }: { versionId
   );
 }
 
-function NodePanel({ node, sub, nodes, dependents, codeLink, askLink, onSelect }: { node: GraphNode; sub: Subgraph; nodes: Map<number, GraphNode>; dependents: boolean; codeLink: (p: string, l?: number) => string; askLink: string; onSelect: (n: GraphNode) => void }) {
+function NodePanel({ node, sub, nodes, dependents, codeLink, askLink, impactLink, onSelect }: { node: GraphNode; sub: Subgraph; nodes: Map<number, GraphNode>; dependents: boolean; codeLink: (p: string, l?: number) => string; askLink: string; impactLink: string; onSelect: (n: GraphNode) => void }) {
   const direct = sub.edges.filter((e) => e.src === node.id || e.dst === node.id);
   const path = keyPath(node.key);
   const attrs = Object.entries(node.attrs ?? {}).filter(([k]) => k !== "language");
@@ -245,7 +245,8 @@ function NodePanel({ node, sub, nodes, dependents, codeLink, askLink, onSelect }
         <div className="flex items-center gap-2">
           <Badge>{node.kind}</Badge>
           {node.exported && <Badge tone="accent">exported</Badge>}
-          <Link className="ml-auto text-xs text-accent hover:underline" to={askLink}>Ask about this</Link>
+          <Link className="ml-auto text-xs text-accent hover:underline" to={impactLink}>Impact of changing this</Link>
+          <Link className="text-xs text-accent hover:underline" to={askLink}>Ask about this</Link>
         </div>
         <h2 className="mt-1 break-all font-mono text-sm font-semibold">{node.qualified_name || node.name}</h2>
         {path && (

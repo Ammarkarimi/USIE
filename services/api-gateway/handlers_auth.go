@@ -29,7 +29,7 @@ var features = []map[string]string{
 	{"id": "parsing", "status": "implemented", "detail": "Python, JavaScript, TypeScript, TSX, Go, Java, Kotlin, C#, Rust, C and C++ via tree-sitter. Other formats are detected and inventoried but not parsed."},
 	{"id": "semantic-resolution", "status": "implemented", "detail": "Imports, exports, calls, instantiation and inheritance with confidence levels and provenance. For the statically typed languages, calls also follow declared types of variables, fields and call results. No general type inference, macro expansion or data-flow analysis."},
 	{"id": "knowledge-graph", "status": "implemented", "detail": "Versioned snapshots in PostgreSQL with search, bounded traversal and snapshot diff."},
-	{"id": "change-impact", "status": "experimental", "detail": "Dependents are available as reverse graph traversal. No risk scoring or test selection."},
+	{"id": "change-impact", "status": "implemented", "detail": "Changed declarations from symbols, files, a unified diff or two analyzed versions; dependents through resolved relationships; tests that reach the change; an explained risk score. Not measured coverage."},
 	{"id": "ai-reasoning", "status": "experimental", "detail": "Questions about an analyzed version are answered from knowledge-graph evidence; every claim is checked against the evidence it cites. Requires an AI provider to be configured."},
 	{"id": "transformation", "status": "planned", "detail": "Not implemented."},
 	{"id": "verification", "status": "planned", "detail": "Not implemented."},

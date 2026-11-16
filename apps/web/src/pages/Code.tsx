@@ -7,7 +7,7 @@ import { keyLabel, keyPath } from "@usie/sdk";
 import { api } from "../api";
 import { useAsync } from "../hooks";
 import { PageHeader } from "../App";
-import { RepoLinks, VersionPicker, askHref, useDocumentTitle, useRepoVersion } from "../components/shared";
+import { RepoLinks, VersionPicker, askHref, impactHref, useDocumentTitle, useRepoVersion } from "../components/shared";
 import { monacoLanguage } from "../monaco";
 
 export default function CodePage() {
@@ -171,7 +171,7 @@ function FileView({ versionId, repoId, path, line, onOpen }: { versionId: string
           {panel === "symbols" && (
             symbols.length === 0 ? <p className="p-3 text-sm text-muted">{file.parse_status === "parsed" || file.parse_status === "parsed_with_errors" ? "No symbols declared in this file." : "This file was not parsed."}</p> : (
               <ul className="divide-y divide-border">
-                {symbols.map((s) => <SymbolRow key={s.key} s={s} onReveal={() => reveal(s.start_line)} graphHref={graphLink(s.key)} askHref={askHref(repoId, versionId, s.key)} />)}
+                {symbols.map((s) => <SymbolRow key={s.key} s={s} onReveal={() => reveal(s.start_line)} graphHref={graphLink(s.key)} askHref={askHref(repoId, versionId, s.key)} impactHref={impactHref(repoId, versionId, s.key)} />)}
               </ul>
             )
           )}
@@ -205,7 +205,7 @@ function FileView({ versionId, repoId, path, line, onOpen }: { versionId: string
   );
 }
 
-function SymbolRow({ s, onReveal, graphHref, askHref }: { s: GraphNode; onReveal: () => void; graphHref: string; askHref: string }) {
+function SymbolRow({ s, onReveal, graphHref, askHref, impactHref }: { s: GraphNode; onReveal: () => void; graphHref: string; askHref: string; impactHref: string }) {
   const depth = (s.qualified_name ?? s.name).split(".").length - 1;
   return (
     <li className="px-3 py-1.5 text-sm" style={{ paddingLeft: `${12 + depth * 12}px` }}>
@@ -216,6 +216,7 @@ function SymbolRow({ s, onReveal, graphHref, askHref }: { s: GraphNode; onReveal
         </button>
         <span className="flex shrink-0 gap-2 text-xs">
           <Link to={graphHref} className="text-accent hover:underline">graph</Link>
+          <Link to={impactHref} className="text-accent hover:underline" title="What depends on this symbol">impact</Link>
           <Link to={askHref} className="text-accent hover:underline" title="Ask a question about this symbol">ask</Link>
         </span>
       </div>

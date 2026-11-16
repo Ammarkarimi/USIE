@@ -190,6 +190,25 @@ func conformance(t *testing.T, store Store, scope func(i int) Scope) {
 		}
 		return sub
 	}
+	byKeys, err := store.NodesByKeys(ctx, s, []string{"sym:pkg/b.py#h", "sym:nope", "file:a.py", "file:a.py"})
+	if err != nil || keysOf(byKeys) != "file:a.py sym:pkg/b.py#h" {
+		t.Errorf("NodesByKeys: %s %v", keysOf(byKeys), err)
+	}
+	if _, err := store.NodesByKeys(ctx, other, []string{"file:a.py"}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("cross-tenant NodesByKeys: %v", err)
+	}
+	h, _ := store.NodeByKey(ctx, s, "sym:pkg/b.py#h")
+	in, sources, truncated, err := store.Incoming(ctx, s, []int32{h.ID}, EdgeFilter{Kinds: []string{RelCalls}, MinConfidence: Probable}, 10)
+	if err != nil || len(in) != 1 || in[0].Rule != "py.import.wildcard" || keysOf(sources) != "sym:a.py#f" || truncated {
+		t.Errorf("Incoming: %+v %s %v %v", in, keysOf(sources), truncated, err)
+	}
+	if in, _, truncated, _ := store.Incoming(ctx, s, []int32{h.ID}, EdgeFilter{Kinds: []string{RelCalls}}, 1); len(in) != 1 || !truncated {
+		t.Errorf("Incoming limit: %+v %v", in, truncated)
+	}
+	if _, _, _, err := store.Incoming(ctx, other, []int32{h.ID}, EdgeFilter{}, 10); !errors.Is(err, ErrNotFound) {
+		t.Errorf("cross-tenant Incoming: %v", err)
+	}
+
 	calls := EdgeFilter{Kinds: []string{RelCalls}}
 	if sub := hood("sym:a.py#f", NeighborhoodQuery{Depth: 1, Direction: Out, Filter: calls}); keysOf(sub.Nodes) != "sym:a.py#f sym:a.py#g sym:pkg/b.py#h" || len(sub.Edges) != 3 {
 		t.Errorf("out depth 1: %s (%d edges)", keysOf(sub.Nodes), len(sub.Edges))

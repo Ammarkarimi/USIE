@@ -1,5 +1,5 @@
 import type {
-  AIConversation, AIStatus, ApiToken, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, FileDetail, GraphDiff, GraphNode,
+  AIConversation, AIStatus, ApiToken, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, FileDetail, GraphDiff, GraphNode, Impact, ImpactRequest,
   GraphStats, Job, JobStatus, Reference, Repository, Session, SourceFile, SourceKind, Subgraph, SystemInfo, Version,
   Worker, Workspace,
 } from "./types";
@@ -146,6 +146,9 @@ export class UsieClient {
     this.request<Subgraph>("GET", `/versions/${id}/graph/neighborhood`, { query: q });
   fileGraph = (id: string, q: { min_confidence?: Confidence; max_edges?: number } = {}) =>
     this.request<Subgraph>("GET", `/versions/${id}/graph/files`, { query: q });
+  /** Changed declarations, their dependents, reaching tests and an explained risk score. */
+  impact = (versionId: string, req: ImpactRequest) =>
+    this.request<{ version_id: string; base_version_id?: string; impact: Impact }>("POST", `/versions/${versionId}/impact`, { body: req });
   graphDiff = (id: string, base: string, limit = 200) =>
     this.request<{ base_version_id: string; head_version_id: string; diff: GraphDiff }>("GET", `/versions/${id}/graph/diff`, { query: { base, limit } });
 

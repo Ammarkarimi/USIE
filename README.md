@@ -28,7 +28,7 @@ same status at `GET /api/v1/system` and on its Settings page.
 | REST API | **implemented** | [OpenAPI 3](services/api-gateway/openapi.yaml), typed TypeScript SDK in `packages/sdk`. |
 | Security baseline | **implemented** | Sessions + CSRF, API tokens, organization isolation, RBAC, rate limits, audit log, hardened git, untrusted-input handling. [Security model](docs/security/threat-model.md). |
 | Job orchestration | **implemented** | PostgreSQL queue with leases, heartbeats, retries, cancellation; horizontally scalable workers. |
-| Change impact | **experimental** | "Dependents" view: reverse reachability through calls, imports and inheritance. No risk scoring. |
+| Change impact | **implemented** | For node keys, files, a unified diff or a comparison of two analyzed versions: the declarations the change touches, every dependent reached backwards through resolved relationships (with path and weakest-link confidence), the tests that reach the change, and a 0–100 risk score whose six weighted factors are each shown and explained. Reachability through resolved relationships, not measured coverage. [Design](docs/adr/0010-change-impact.md). |
 | Distributed execution | **experimental** | Several workers share one queue. No sandboxed build/test execution. |
 | AI reasoning | **experimental** | Ask questions about an analyzed version. Answers come from knowledge-graph evidence; every claim is shown as cited, inference or unsupported after the server checks its citations. Needs `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`); off otherwise. [Design](docs/adr/0009-ai-reasoning.md). |
 | Transformation, verification | **planned** | No code exists for these. |

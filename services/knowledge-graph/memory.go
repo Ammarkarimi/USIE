@@ -354,3 +354,71 @@ func toSet(list []string) map[string]bool {
 	}
 	return set
 }
+
+func (m *Memory) NodesByKeys(_ context.Context, s Scope, keys []string) ([]Node, error) {
+	snap, err := m.get(s)
+	if err != nil {
+		return nil, err
+	}
+	sorted := append([]string(nil), keys...)
+	sort.Strings(sorted)
+	out := []Node{}
+	var prev string
+	for i, k := range sorted {
+		if i > 0 && k == prev {
+			continue
+		}
+		prev = k
+		if id, ok := snap.byKey[k]; ok {
+			out = append(out, snap.nodes[id])
+		}
+	}
+	return out, nil
+}
+
+func (m *Memory) Incoming(_ context.Context, s Scope, ids []int32, f EdgeFilter, limit int) ([]Edge, []Node, bool, error) {
+	snap, err := m.get(s)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	kinds, maxRank := toSet(f.Kinds), filterRank(f)
+	edges := []Edge{}
+	for _, id := range ids {
+		if id < 0 || int(id) >= len(snap.nodes) {
+			continue
+		}
+		for _, ei := range snap.in[id] {
+			if e := snap.edges[ei]; edgeAllowed(e, kinds, maxRank) {
+				edges = append(edges, e)
+			}
+		}
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		a, b := edges[i], edges[j]
+		if a.Dst != b.Dst {
+			return a.Dst < b.Dst
+		}
+		if a.Src != b.Src {
+			return a.Src < b.Src
+		}
+		return a.Kind < b.Kind
+	})
+	truncated := len(edges) > limit
+	if truncated {
+		edges = edges[:max(limit, 0)]
+	}
+	seen := map[int32]bool{}
+	var srcIDs []int32
+	for _, e := range edges {
+		if !seen[e.Src] {
+			seen[e.Src] = true
+			srcIDs = append(srcIDs, e.Src)
+		}
+	}
+	sort.Slice(srcIDs, func(i, j int) bool { return srcIDs[i] < srcIDs[j] })
+	nodes := []Node{}
+	for _, id := range srcIDs {
+		nodes = append(nodes, snap.nodes[id])
+	}
+	return edges, nodes, truncated, nil
+}

@@ -372,3 +372,57 @@ export interface AIConversation {
   updated_at: string;
   messages?: AIMessage[];
 }
+
+// ---- change impact ----
+
+export interface ImpactRequest {
+  /** Node keys treated as changed. */
+  symbols?: string[];
+  /** Paths whose declarations are all treated as changed. */
+  files?: string[];
+  /** A unified diff that applies to the analyzed version. */
+  diff?: string;
+  /** An earlier analyzed version of the same repository. */
+  base_version_id?: string;
+  depth?: number;
+  min_confidence?: "confirmed" | "probable" | "inferred";
+}
+
+export interface ImpactChanged {
+  node: GraphNode;
+  reason: string;
+}
+
+export interface ImpactNode {
+  node: GraphNode;
+  distance: number;
+  confidence: "confirmed" | "probable" | "inferred";
+  /** Node keys from this dependent to the changed node. */
+  via: string[];
+  /** Relationship kinds along `via`. */
+  kinds: string[];
+  test: boolean;
+}
+
+export interface RiskFactor {
+  id: string;
+  label: string;
+  value: number;
+  weight: number;
+  points: number;
+  explanation: string;
+}
+
+export interface Impact {
+  changed: ImpactChanged[];
+  unmatched: string[];
+  affected: ImpactNode[];
+  tests: ImpactNode[];
+  untested_changes: string[];
+  affected_files: number;
+  risk: { score: number; level: "low" | "medium" | "high"; factors: RiskFactor[]; note: string };
+  depth: number;
+  min_confidence: string;
+  truncated: boolean;
+  limitations: string[];
+}

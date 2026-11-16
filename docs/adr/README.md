@@ -11,3 +11,4 @@
 | [0007](0007-confidence-and-provenance.md) | Confidence levels and provenance on every relationship | accepted |
 | [0008](0008-authentication.md) | Sessions with CSRF tokens, API tokens, organization-scoped RBAC | accepted |
 | [0009](0009-ai-reasoning.md) | Grounded AI answers: evidence retrieval, validated citations, no model tools | accepted |
+| [0010](0010-change-impact.md) | Change impact from the knowledge graph, with an explained score | accepted |
