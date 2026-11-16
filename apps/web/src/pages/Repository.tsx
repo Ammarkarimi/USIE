@@ -132,6 +132,35 @@ const statusColors: Record<string, string> = {
   parsed: "bg-ok", parsed_with_errors: "bg-warn", skipped: "bg-muted", unsupported: "bg-border", failed: "bg-danger",
 };
 
+/** Gate status and open findings per category, linking to the Quality page. */
+function QualityOverview({ v, repoId }: { v: Version; repoId: string }) {
+  const q = useAsync(() => api.quality(v.id), [v.id]);
+  if (q.error) return <ErrorBanner error={q.error} onRetry={q.reload} />;
+  if (!q.data) return null;
+  const link = `/repositories/${repoId}/quality?version=${v.id}`;
+  if (!q.data.available) {
+    return <p className="text-sm text-muted">Code quality: {q.data.reason}</p>;
+  }
+  const c = q.data.categories!;
+  const passed = q.data.gate!.status === "passed";
+  const items: [string, number, string][] = [
+    ["bugs", c.bug.open, "bug"], ["vulnerabilities", c.vulnerability.open, "vulnerability"],
+    ["security hotspots to review", c.hotspot.open, "hotspot"], ["code smells", c.smell.open, "smell"],
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+      <span className="font-medium">Code quality</span>
+      <Badge tone={passed ? "ok" : "danger"}>quality gate {passed ? "passed" : "failed"}</Badge>
+      {items.map(([label, n, cat]) => (
+        <Link key={cat} to={`${link}&category=${cat}`} className="text-muted hover:text-fg">
+          <span className="font-semibold tabular-nums text-fg">{n.toLocaleString()}</span> {label}
+        </Link>
+      ))}
+      <Link to={link} className="ml-auto text-accent hover:underline">Open the quality report</Link>
+    </div>
+  );
+}
+
 function Analysis({ v, repoId }: { v: Version; repoId: string }) {
   const s = v.stats;
   const refs = s.references_by_outcome ?? {};
@@ -154,6 +183,7 @@ function Analysis({ v, repoId }: { v: Version; repoId: string }) {
         <Stat label="Relationships" value={(s.graph?.edges ?? 0).toLocaleString()} />
         <Stat label="Declared deps" value={(s.declared_dependencies ?? 0).toLocaleString()} />
       </div>
+      {v.status === "ready" && <QualityOverview v={v} repoId={repoId} />}
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Parsing">
           <Proportions items={Object.entries(s.files_by_parse_status ?? {}).map(([k, n]) => ({ label: k.replace(/_/g, " "), value: n, className: statusColors[k] ?? "bg-muted" }))} />

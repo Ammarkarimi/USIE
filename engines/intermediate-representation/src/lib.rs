@@ -403,6 +403,42 @@ pub struct FileIr {
     /// File-level language-specific metadata (e.g. Python `__all__`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub attrs: Attrs,
+    /// Code quality and security findings of the built-in rules.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<Finding>,
+    /// Measured size and complexity of the file's functions.
+    #[serde(default)]
+    pub metrics: CodeMetrics,
+}
+
+/// One rule violation found by the engine's syntax-tree checks.
+///
+/// A finding is a pattern match, not a proof: the rule catalog states what
+/// each rule matches and where it can be wrong.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Finding {
+    /// Rule identifier from the engine's rule catalog.
+    pub rule: String,
+    pub span: Span,
+    pub message: String,
+    /// Name of the enclosing function, when there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<String>,
+    /// Stable hash of the matched code with whitespace normalized. Together
+    /// with the path it identifies the same finding across versions even
+    /// when surrounding lines move.
+    pub context: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CodeMetrics {
+    /// Named functions, methods and constructors (and anonymous functions
+    /// bound to a name).
+    pub functions: u32,
+    /// Sum of the cyclomatic complexity of those functions.
+    pub complexity: u32,
+    /// Highest cyclomatic complexity of one function.
+    pub max_complexity: u32,
 }
 
 impl FileIr {

@@ -58,6 +58,13 @@ func routes() []route {
 		{Method: "GET", Path: v + "/versions/{id}/graph/files", MinRole: "viewer", Handler: (*Server).graphFiles},
 		{Method: "GET", Path: v + "/versions/{id}/graph/diff", MinRole: "viewer", Handler: (*Server).graphDiff},
 		{Method: "POST", Path: v + "/versions/{id}/impact", MinRole: "viewer", Handler: (*Server).analyzeImpact},
+		{Method: "GET", Path: v + "/versions/{id}/quality", MinRole: "viewer", Handler: (*Server).versionQuality},
+		{Method: "GET", Path: v + "/versions/{id}/findings", MinRole: "viewer", Handler: (*Server).listFindings},
+		{Method: "GET", Path: v + "/quality/rules", MinRole: "viewer", Handler: (*Server).listRules},
+		{Method: "PUT", Path: v + "/repositories/{id}/findings/{fingerprint}/review", MinRole: "member", Handler: (*Server).reviewFinding},
+		{Method: "DELETE", Path: v + "/repositories/{id}/findings/{fingerprint}/review", MinRole: "member", Handler: (*Server).reopenFinding},
+		{Method: "GET", Path: v + "/repositories/{id}/quality-gate", MinRole: "viewer", Handler: (*Server).getQualityGate},
+		{Method: "PUT", Path: v + "/repositories/{id}/quality-gate", MinRole: "admin", Handler: (*Server).setQualityGate},
 
 		{Method: "GET", Path: v + "/jobs", MinRole: "viewer", Handler: (*Server).listJobs},
 		{Method: "GET", Path: v + "/jobs/{id}", MinRole: "viewer", Handler: (*Server).getJob},

@@ -31,7 +31,7 @@ this. PostgreSQL row-level security is a planned second layer.
 | Commit | `commits` | implemented (git sources, bounded history) |
 | Branch | `branches` | implemented (git sources) |
 | SourceFile | `source_files` | implemented |
-| — parse cache | `file_analyses` | implemented |
+| — parse cache | `file_analyses` | implemented; also caches the file's rule matches and function metrics (migration 0005) |
 | Symbol | `symbols` view over `graph_nodes` | implemented |
 | SymbolReference | `symbol_references` | implemented, including unresolved references |
 | Dependency | `dependencies` | implemented (declared in manifests) |
@@ -45,6 +45,9 @@ this. PostgreSQL row-level security is a planned second layer.
 | AIRecommendation | — | planned; answers carry suggested follow-up questions, not stored recommendations |
 | CodeTransformation | `code_changes` | implemented (migration 0003): request, validated edits, resulting files, diff, impact, model usage; never written to the repository |
 | VerificationRun, TestResult | `verification_runs` | implemented: profile, status, per-step exit codes, clipped output and test counts for the baseline and the change |
+| Finding | `findings` | implemented (migration 0005): rule, category, severity, location, message, fingerprint, new since the baseline, in test code |
+| — finding reviews | `finding_reviews` | implemented: one decision per repository and fingerprint (accepted, false_positive, safe), with comment, reviewer and time |
+| — quality gate | `repositories.quality_gate` | implemented: JSON conditions; NULL means the default gate |
 | BuildArtifact | — | not stored: sandbox work trees are deleted after each run |
 
 ## Graph tables
@@ -63,6 +66,7 @@ comparable across versions (`Store.Diff`).
 - `graph_relationships_dst_idx` — reverse traversal (callers, dependents).
 - `graph_nodes_name_idx` — prefix search on lower-cased names.
 - `source_files_hash_idx` — finding files by content hash.
+- `findings_fingerprint_idx` — reviews and baselines by `(organization_id, repository_id, fingerprint)`.
 
 ## Audit events
 

@@ -28,6 +28,7 @@ import (
 
 	"github.com/ammarkarimi/usie/internal/platform/blob"
 	"github.com/ammarkarimi/usie/internal/platform/config"
+	quality "github.com/ammarkarimi/usie/services/code-quality"
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	ingestion "github.com/ammarkarimi/usie/services/repository-ingestion"
 	analysis "github.com/ammarkarimi/usie/services/semantic-analysis"
@@ -65,7 +66,15 @@ type fileState struct {
 	symbols     int
 	diagnostics int
 	irKey       string
+	// Matches of the engine's syntax-tree rules (from the parse or its cache).
+	ruleMatches []quality.Raw
+	metrics     analysis.CodeMetrics
+	// Matches of the text rules (secrets), found while scanning.
+	textMatches []quality.Raw
 }
+
+// maxDuplicationLines bounds the duplication detector's memory use.
+const maxDuplicationLines = 2_000_000
 
 // Stats is stored on the version and shown in the UI. Every number is
 // measured during the run; nothing is estimated.
@@ -81,6 +90,7 @@ type Stats struct {
 	ParseCacheMisses int              `json:"parse_cache_misses"`
 	Symbols          int64            `json:"symbols"`
 	Graph            graphStats       `json:"graph"`
+	Quality          qualityStats     `json:"quality"`
 	References       map[string]int64 `json:"references_by_outcome"`
 	DroppedEdges     int              `json:"dropped_edges"`
 	BuildSystems     []string         `json:"build_systems"`
@@ -90,6 +100,24 @@ type Stats struct {
 	SkippedIgnored   int              `json:"skipped_ignored"`
 	EngineVersion    string           `json:"engine_version"`
 	DurationsMS      map[string]int64 `json:"durations_ms"`
+}
+
+// qualityStats summarizes the code quality run. Counts of open findings
+// depend on reviews and are computed when read, not stored here.
+type qualityStats struct {
+	Findings         int `json:"findings"`
+	NewFindings      int `json:"new_findings"`
+	Functions        int `json:"functions"`
+	Complexity       int `json:"complexity"`
+	MaxComplexity    int `json:"max_complexity"`
+	ComparedLines    int `json:"duplication_compared_lines"`
+	DuplicatedLines  int `json:"duplicated_lines"`
+	DuplicatedBlocks int `json:"duplicated_blocks"`
+	// The detector's memory budget was exceeded; duplication not measured.
+	DuplicationSkipped bool `json:"duplication_skipped"`
+	// Version new findings are measured against; null on the first
+	// analysis, or when the previous version predates quality checks.
+	BaselineVersionID *string `json:"baseline_version_id"`
 }
 
 type graphStats struct {
@@ -178,6 +206,7 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 	// ---- inventory ------------------------------------------------------
 	done = stage("scanning")
 	manifests := ingestion.NewManifestCollector()
+	duplication := quality.NewDuplication(maxDuplicationLines)
 	var files []*fileState
 	scan, err := ingestion.Scan(ctx, root, limits, func(f ingestion.File, content []byte) error {
 		st := &fileState{File: f}
@@ -195,6 +224,13 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 			st.stored = true
 			if !f.Vendored && ingestion.IsManifest(f.Path) {
 				manifests.Add(f.Path, content)
+			}
+			if !f.Vendored && !f.Generated {
+				st.textMatches = quality.ScanSecrets(f.Path, f.Category, content)
+				if f.Category == ingestion.CategorySource && ingestion.ParserLanguage(f.Path) != "" &&
+					(f.Encoding == "utf-8" || f.Encoding == "utf-8-bom") {
+					duplication.Add(f.Path, content)
+				}
 			}
 		}
 		files = append(files, st)
@@ -292,6 +328,14 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 	}
 	done()
 
+	// ---- code quality -------------------------------------------------
+	done = stage("checking")
+	findings, err := p.qualityFindings(ctx, job, parentID, files, duplication.Result(), &stats)
+	if err != nil {
+		return err
+	}
+	done()
+
 	// ---- build and store ------------------------------------------------
 	done = stage("storing")
 	nodes, edges, dropped, err := buildGraph(repoName, files, facts, resolution)
@@ -316,7 +360,7 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 	durations["storing"] = 0
 	persist := func(tx pgx.Tx) error {
 		durations["storing"] = time.Since(storeStart).Milliseconds()
-		return p.persist(ctx, tx, job, files, facts, resolution, nodes, edges, git, commitSHA, branch, scan.TreeHash, parentID, stats)
+		return p.persist(ctx, tx, job, files, facts, resolution, nodes, edges, findings, git, commitSHA, branch, scan.TreeHash, parentID, stats)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -382,6 +426,8 @@ type cached struct {
 	code, msg   string
 	symbols     int
 	diagnostics int
+	matches     []quality.Raw
+	metrics     analysis.CodeMetrics
 }
 
 // parse decides, for every file, whether it is parsed, and parses only
@@ -436,7 +482,7 @@ func (p *Pipeline) parse(ctx context.Context, job *orchestrator.Job, files []*fi
 	}
 	known := map[analysisKey]cached{}
 	if len(hashes) > 0 {
-		rows, err := p.Pool.Query(ctx, `SELECT content_hash, language, parser_fingerprint, status, error_code, error_message, symbol_count, diagnostic_count
+		rows, err := p.Pool.Query(ctx, `SELECT content_hash, language, parser_fingerprint, status, error_code, error_message, symbol_count, diagnostic_count, findings, metrics
 			FROM file_analyses WHERE organization_id = $1 AND content_hash = ANY($2) AND parser_fingerprint = ANY($3)`, job.OrgID, hashes, fpList)
 		if err != nil {
 			return err
@@ -444,9 +490,13 @@ func (p *Pipeline) parse(ctx context.Context, job *orchestrator.Job, files []*fi
 		for rows.Next() {
 			var hash, lang, fp, status string
 			var c cached
-			if err := rows.Scan(&hash, &lang, &fp, &status, &c.code, &c.msg, &c.symbols, &c.diagnostics); err != nil {
+			var findingsJSON, metricsJSON []byte
+			if err := rows.Scan(&hash, &lang, &fp, &status, &c.code, &c.msg, &c.symbols, &c.diagnostics, &findingsJSON, &metricsJSON); err != nil {
 				rows.Close()
 				return err
+			}
+			if json.Unmarshal(findingsJSON, &c.matches) != nil || json.Unmarshal(metricsJSON, &c.metrics) != nil {
+				continue // unreadable cache entry: parse again
 			}
 			if fingerprints[lang] == fp {
 				c.ok = status == "ok"
@@ -464,6 +514,7 @@ func (p *Pipeline) parse(ctx context.Context, job *orchestrator.Job, files []*fi
 			if c.ok {
 				f.irKey = irKey(job.OrgID, fingerprints[key.language], key.hash)
 				f.symbols, f.diagnostics = c.symbols, c.diagnostics
+				f.ruleMatches, f.metrics = c.matches, c.metrics
 				f.parseStatus = "parsed"
 				if c.diagnostics > 0 {
 					f.parseStatus = "parsed_with_errors"
@@ -529,6 +580,14 @@ func (p *Pipeline) parse(ctx context.Context, job *orchestrator.Job, files []*fi
 				return err
 			}
 			c.ok, c.symbols, c.diagnostics = true, len(summary.Symbols), summary.Stats.DiagnosticsTotal
+			c.metrics = summary.Metrics
+			c.matches = make([]quality.Raw, 0, len(summary.Findings))
+			for _, f := range summary.Findings {
+				c.matches = append(c.matches, quality.Raw{
+					Rule: f.Rule, StartLine: f.Span.StartLine, StartCol: f.Span.StartCol, EndLine: f.Span.EndLine, EndCol: f.Span.EndCol,
+					Message: clean(f.Message), Function: clean(f.Function), Context: clean(f.Context),
+				})
+			}
 		}
 		apply(key, c)
 		// Timeouts and read errors depend on load, not on content: do not cache them.
@@ -537,12 +596,25 @@ func (p *Pipeline) parse(ctx context.Context, job *orchestrator.Job, files []*fi
 			if c.ok {
 				status = "ok"
 			}
-			if _, err := p.Pool.Exec(ctx, `INSERT INTO file_analyses (organization_id, content_hash, language, parser_fingerprint, status, error_code, error_message, symbol_count, diagnostic_count)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			matches := c.matches
+			if matches == nil {
+				matches = []quality.Raw{}
+			}
+			findingsJSON, err := json.Marshal(matches)
+			if err != nil {
+				return err
+			}
+			metricsJSON, err := json.Marshal(c.metrics)
+			if err != nil {
+				return err
+			}
+			if _, err := p.Pool.Exec(ctx, `INSERT INTO file_analyses (organization_id, content_hash, language, parser_fingerprint, status, error_code, error_message, symbol_count, diagnostic_count, findings, metrics)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 				ON CONFLICT (organization_id, content_hash, language, parser_fingerprint) DO UPDATE
 				SET status = EXCLUDED.status, error_code = EXCLUDED.error_code, error_message = EXCLUDED.error_message,
-				    symbol_count = EXCLUDED.symbol_count, diagnostic_count = EXCLUDED.diagnostic_count`,
-				job.OrgID, key.hash, key.language, fingerprints[key.language], status, c.code, c.msg, c.symbols, c.diagnostics); err != nil {
+				    symbol_count = EXCLUDED.symbol_count, diagnostic_count = EXCLUDED.diagnostic_count,
+				    findings = EXCLUDED.findings, metrics = EXCLUDED.metrics`,
+				job.OrgID, key.hash, key.language, fingerprints[key.language], status, c.code, c.msg, c.symbols, c.diagnostics, findingsJSON, metricsJSON); err != nil {
 				return err
 			}
 		}

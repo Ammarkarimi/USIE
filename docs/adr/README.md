@@ -14,3 +14,4 @@
 | [0010](0010-change-impact.md) | Change impact from the knowledge graph, with an explained score | accepted |
 | [0011](0011-changes-and-verification.md) | AI-proposed changes as validated diffs; verification in a bubblewrap sandbox | accepted |
 | [0012](0012-team-management.md) | Team management with hashed one-time links; email optional | accepted |
+| [0013](0013-code-quality.md) | Rule-based code quality checks in the engine, reviews by fingerprint | accepted |

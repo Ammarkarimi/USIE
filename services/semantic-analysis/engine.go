@@ -39,6 +39,18 @@ type Info struct {
 	Version         string         `json:"version"`
 	IRSchemaVersion int            `json:"ir_schema_version"`
 	Languages       []LanguageInfo `json:"languages"`
+	Rules           []RuleInfo     `json:"rules"`
+}
+
+// RuleInfo is one entry of the engine's code quality rule catalog.
+type RuleInfo struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Category    string   `json:"category"`
+	Severity    string   `json:"severity"`
+	Languages   []string `json:"languages"`
+	Description string   `json:"description"`
+	Remediation string   `json:"remediation"`
 }
 
 // Fingerprint returns the parser fingerprint for a language ("" if unsupported).
@@ -125,6 +137,29 @@ type IRSummary struct {
 	Stats         struct {
 		DiagnosticsTotal int `json:"diagnostics_total"`
 	} `json:"stats"`
+	Findings []Finding   `json:"findings"`
+	Metrics  CodeMetrics `json:"metrics"`
+}
+
+// Finding is a match of one of the engine's syntax-tree rules.
+type Finding struct {
+	Rule string `json:"rule"`
+	Span struct {
+		StartLine int `json:"start_line"`
+		StartCol  int `json:"start_col"`
+		EndLine   int `json:"end_line"`
+		EndCol    int `json:"end_col"`
+	} `json:"span"`
+	Message  string `json:"message"`
+	Function string `json:"function,omitempty"`
+	Context  string `json:"context"`
+}
+
+// CodeMetrics are the function measurements of one file.
+type CodeMetrics struct {
+	Functions     int `json:"functions"`
+	Complexity    int `json:"complexity"`
+	MaxComplexity int `json:"max_complexity"`
 }
 
 // Parse runs one engine process over the requests and calls onResult once

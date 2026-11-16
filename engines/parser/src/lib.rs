@@ -9,6 +9,7 @@
 //! input yields diagnostics rather than failures.
 
 mod cfamily;
+pub mod checks;
 mod common;
 mod csharp;
 mod ecmascript;
@@ -24,9 +25,10 @@ use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use usie_ir::{FileIr, Language, ParseStats, ParserInfo, IR_SCHEMA_VERSION};
 
-/// Version of the extraction logic. Bump whenever an adapter changes the IR
-/// it produces for the same input, so cached analyses are invalidated.
-pub const EXTRACTOR_VERSION: &str = "1";
+/// Version of the extraction logic, including the quality and security
+/// checks. Bump whenever an adapter or a rule changes the IR it produces for
+/// the same input, so cached analyses are invalidated.
+pub const EXTRACTOR_VERSION: &str = "2";
 
 #[derive(Debug, Clone)]
 pub struct ParseOptions {
@@ -158,6 +160,7 @@ pub fn parse(
         Language::Rust => rust::extract(root, source, options.limits),
         Language::C | Language::Cpp => cfamily::extract(root, source, language, options.limits),
     };
+    let checked = checks::run(root, source, language);
 
     Ok(FileIr {
         schema_version: IR_SCHEMA_VERSION,
@@ -175,5 +178,7 @@ pub fn parse(
             extract_micros: extract_started.elapsed().as_micros() as u64,
         },
         attrs: extracted.attrs,
+        findings: checked.findings,
+        metrics: checked.metrics,
     })
 }

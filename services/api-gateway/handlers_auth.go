@@ -11,6 +11,7 @@ import (
 
 	"github.com/ammarkarimi/usie/internal/platform/authn"
 	"github.com/ammarkarimi/usie/internal/store"
+	analysis "github.com/ammarkarimi/usie/services/semantic-analysis"
 )
 
 //go:embed openapi.yaml
@@ -33,6 +34,7 @@ var features = []map[string]string{
 	{"id": "ai-reasoning", "status": "experimental", "detail": "Questions about an analyzed version are answered from knowledge-graph evidence; every claim is checked against the evidence it cites. Requires an AI provider to be configured."},
 	{"id": "transformation", "status": "experimental", "detail": "An AI model proposes edits that the server validates and applies to the analyzed sources, producing a diff and its change impact. Nothing is written to the repository; proposals are unverified until a verification run passes. Requires an AI provider."},
 	{"id": "verification", "status": "experimental", "detail": "Fixed build-and-test profiles run on workers in a bubblewrap sandbox without network or credentials, compared with the unchanged version. Requires USIE_SANDBOX=bubblewrap on a worker and the profile's toolchain."},
+	{"id": "code_quality", "status": "implemented", "detail": "Syntax-tree rules for bugs, vulnerabilities, security hotspots and maintainability in every parsed language, hard-coded secret detection in all text files, duplicated code, new-code tracking against the previous version, reviews and quality gates. Rules see one file at a time and no types or runtime values; test coverage is not measured."},
 	{"id": "team", "status": "implemented", "detail": "Invitations, member roles and removal, organization switching, password change and reset links. Links are emailed when SMTP is configured; otherwise administrators share them."},
 	{"id": "distributed-execution", "status": "implemented", "detail": "Multiple workers share a PostgreSQL job queue with leases, heartbeats, retries and cancellation, for analysis and verification jobs."},
 }
@@ -54,7 +56,7 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request, _ *store.Prin
 		"sources": map[string]bool{"git": true, "upload": true, "local": len(s.Cfg.AllowedLocalRoots) > 0},
 		"limits": map[string]int64{"max_upload_bytes": s.Cfg.MaxUploadBytes, "max_file_bytes": s.Cfg.MaxFileBytes,
 			"max_repository_files": int64(s.Cfg.MaxRepoFiles), "max_repository_bytes": s.Cfg.MaxRepoBytes},
-		"engine": s.Engine,
+		"engine": engineSummary(s.Engine),
 		"email":  s.Mail != nil,
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -292,4 +294,15 @@ func (s *Server) listAudit(w http.ResponseWriter, r *http.Request, p *store.Prin
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": events})
 	return nil
+}
+
+// engineSummary leaves the rule catalog out of /system; it is served by
+// /quality/rules.
+func engineSummary(info *analysis.Info) *analysis.Info {
+	if info == nil {
+		return nil
+	}
+	out := *info
+	out.Rules = nil
+	return &out
 }

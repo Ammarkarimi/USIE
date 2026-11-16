@@ -582,3 +582,102 @@ export interface SandboxCapability {
   network: boolean;
   programs: string[];
 }
+
+// ---- code quality ----------------------------------------------------------
+
+export type FindingCategory = "bug" | "vulnerability" | "hotspot" | "smell";
+export type FindingSeverity = "blocker" | "critical" | "major" | "minor" | "info";
+export type FindingStatus = "open" | "accepted" | "false_positive" | "safe";
+
+export interface QualityRule {
+  id: string;
+  name: string;
+  category: FindingCategory;
+  severity: FindingSeverity;
+  languages: string[];
+  description: string;
+  remediation: string;
+  source: "engine" | "text";
+}
+
+export interface GateMetric {
+  metric: string;
+  description: string;
+  new_code: boolean;
+}
+
+export interface GateCondition {
+  metric: string;
+  threshold: number;
+}
+
+export interface GateResult {
+  status: "passed" | "failed";
+  default: boolean;
+  conditions: (GateCondition & { actual: number | null; status: "passed" | "failed" | "no_baseline" })[];
+}
+
+export interface QualityGate {
+  conditions: GateCondition[];
+  default: boolean;
+  metrics: GateMetric[];
+}
+
+export interface CategorySummary {
+  open: number;
+  new: number;
+  reviewed: number;
+  by_severity: Partial<Record<FindingSeverity, number>>;
+}
+
+export interface QualitySummary {
+  version_id: string;
+  available: boolean;
+  reason?: string;
+  baseline_version_id?: string | null;
+  gate?: GateResult;
+  categories?: Record<FindingCategory, CategorySummary>;
+  grades?: { reliability: string; security: string; security_review: string };
+  hotspots_reviewed_percent?: number | null;
+  metrics?: {
+    functions: number;
+    complexity: number;
+    max_complexity: number;
+    duplication_compared_lines: number;
+    duplicated_lines: number;
+    duplicated_blocks: number;
+    duplicated_lines_percent: number | null;
+    duplication_skipped: boolean;
+  };
+  rules?: { rule: string; name: string; category: string; severity: string; count: number }[];
+}
+
+export interface Finding {
+  seq: number;
+  rule: string;
+  category: FindingCategory;
+  severity: FindingSeverity;
+  path: string;
+  start_line: number;
+  start_col: number;
+  end_line: number;
+  end_col: number;
+  message: string;
+  function: string;
+  fingerprint: string;
+  is_new: boolean;
+  in_test: boolean;
+  status: FindingStatus;
+  review: { status: FindingStatus; comment: string; reviewed_by: string; reviewed_at: string } | null;
+}
+
+export interface FindingQuery {
+  category?: FindingCategory;
+  severity?: FindingSeverity;
+  rule?: string;
+  status?: "open" | "reviewed" | "accepted" | "false_positive" | "safe" | "all";
+  new?: boolean;
+  path?: string;
+  limit?: number;
+  offset?: number;
+}

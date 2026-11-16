@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	quality "github.com/ammarkarimi/usie/services/code-quality"
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	graph "github.com/ammarkarimi/usie/services/knowledge-graph"
 	ingestion "github.com/ammarkarimi/usie/services/repository-ingestion"
@@ -130,10 +131,10 @@ func buildGraph(repoName string, files []*fileState, facts ingestion.ManifestFac
 // one transaction: readers see either the previous state or the complete
 // new one.
 func (p *Pipeline) persist(ctx context.Context, tx pgx.Tx, job *orchestrator.Job, files []*fileState, facts ingestion.ManifestFacts,
-	res *analysis.Resolution, nodes []graph.Node, edges []graph.Edge, git *ingestion.GitMetadata, commitSHA, branch, treeHash string,
+	res *analysis.Resolution, nodes []graph.Node, edges []graph.Edge, findings []quality.Finding, git *ingestion.GitMetadata, commitSHA, branch, treeHash string,
 	parentID *string, stats Stats) error {
 	org, version := job.OrgID, job.VersionID
-	for _, table := range []string{"source_files", "dependencies", "symbol_references"} {
+	for _, table := range []string{"source_files", "dependencies", "symbol_references", "findings"} {
 		if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE organization_id = $1 AND version_id = $2`, org, version); err != nil {
 			return err
 		}
@@ -169,6 +170,17 @@ func (p *Pipeline) persist(ctx context.Context, tx pgx.Tx, job *orchestrator.Job
 		return err
 	}
 	if err := graph.WriteSnapshot(ctx, tx, graph.Scope{OrganizationID: org, VersionID: version}, nodes, edges); err != nil {
+		return err
+	}
+	_, err = tx.CopyFrom(ctx, pgx.Identifier{"findings"},
+		[]string{"organization_id", "version_id", "repository_id", "seq", "rule", "category", "severity", "path", "start_line", "start_col",
+			"end_line", "end_col", "message", "function_name", "fingerprint", "is_new", "in_test"},
+		pgx.CopyFromSlice(len(findings), func(i int) ([]any, error) {
+			f := findings[i]
+			return []any{org, version, job.RepositoryID, int32(i), f.Rule, f.Category, f.Severity, f.Path, int32(f.StartLine), int32(f.StartCol),
+				int32(f.EndLine), int32(f.EndCol), clean(f.Message), clean(f.Function), f.Fingerprint, f.IsNew, f.InTest}, nil
+		}))
+	if err != nil {
 		return err
 	}
 

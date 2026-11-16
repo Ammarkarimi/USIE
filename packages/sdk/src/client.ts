@@ -1,7 +1,7 @@
 import type {
   AIConversation, AIStatus, ApiToken, CreatedInvitation, Invitation, InvitationPreview, Member, Organization, Role, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, CodeChange, FileDetail, GraphDiff, GraphNode, Impact, ImpactRequest, SandboxCapability, VerificationProfile, VerificationRun,
   GraphStats, Job, JobStatus, Reference, Repository, Session, SourceFile, SourceKind, Subgraph, SystemInfo, Version,
-  Worker, Workspace,
+  Worker, Workspace, Finding, FindingQuery, FindingStatus, GateCondition, GateMetric, QualityGate, QualityRule, QualitySummary,
 } from "./types";
 
 /** An error returned by the API, carrying its stable code and request id. */
@@ -172,6 +172,21 @@ export class UsieClient {
   /** Changed declarations, their dependents, reaching tests and an explained risk score. */
   impact = (versionId: string, req: ImpactRequest) =>
     this.request<{ version_id: string; base_version_id?: string; impact: Impact }>("POST", `/versions/${versionId}/impact`, { body: req });
+
+  // Code quality
+  qualityRules = () => this.request<{ rules: QualityRule[]; metrics: GateMetric[]; engine_rules_available: boolean }>("GET", "/quality/rules");
+  quality = (versionId: string) => this.request<QualitySummary>("GET", `/versions/${versionId}/quality`);
+  findings = (versionId: string, q: FindingQuery = {}) =>
+    this.request<{ findings: Finding[]; total: number }>("GET", `/versions/${versionId}/findings`, {
+      query: { ...q, new: q.new ? "true" : undefined },
+    });
+  reviewFinding = (repoId: string, fingerprint: string, status: Exclude<FindingStatus, "open">, comment = "") =>
+    this.request<void>("PUT", `/repositories/${repoId}/findings/${fingerprint}/review`, { body: { status, comment } });
+  reopenFinding = (repoId: string, fingerprint: string) =>
+    this.request<void>("DELETE", `/repositories/${repoId}/findings/${fingerprint}/review`);
+  qualityGate = (repoId: string) => this.request<QualityGate>("GET", `/repositories/${repoId}/quality-gate`);
+  setQualityGate = (repoId: string, gate: { conditions: GateCondition[] } | { default: true }) =>
+    this.request<QualityGate>("PUT", `/repositories/${repoId}/quality-gate`, { body: gate });
   graphDiff = (id: string, base: string, limit = 200) =>
     this.request<{ base_version_id: string; head_version_id: string; diff: GraphDiff }>("GET", `/versions/${id}/graph/diff`, { query: { base, limit } });
 

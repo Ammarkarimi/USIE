@@ -96,6 +96,15 @@ fn info() -> Result<(), Failure> {
         "ir_schema_version": IR_SCHEMA_VERSION,
         "extractor_version": usie_parser::EXTRACTOR_VERSION,
         "languages": languages,
+        "rules": usie_parser::checks::rules().iter().map(|r| serde_json::json!({
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "severity": r.severity,
+            "languages": r.languages,
+            "description": r.description,
+            "remediation": r.remediation,
+        })).collect::<Vec<_>>(),
     });
     println!("{doc}");
     Ok(())

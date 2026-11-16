@@ -991,6 +991,517 @@ paths:
                 - "token"
                 - "password"
       security: []
+  "/quality/rules":
+    get:
+      tags:
+        - "Code quality"
+      summary: "List the code quality rules."
+      description: "The rule catalog: what each rule matches, its category and severity, the languages it covers and its known blind spots, and the metrics a quality gate can use. Without the engine binary in the API process only the text rules are described."
+      operationId: "get_quality_rules"
+      responses:
+        "200":
+          description: "Rule catalog."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  rules:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/QualityRule"
+                  metrics:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/GateMetric"
+                  engine_rules_available:
+                    type: "boolean"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/quality":
+    get:
+      tags:
+        - "Code quality"
+      summary: "Code quality summary of a version."
+      description: "Open, new and reviewed findings per category and severity, grades, function and duplication metrics, the most frequent rules, and the repository quality gate evaluated on this version. New findings are those whose fingerprint the previous analyzed version does not have; without such a baseline new-code conditions report no_baseline and do not fail the gate. available is false for versions analyzed before quality checks existed."
+      operationId: "get_versions_id_quality"
+      responses:
+        "200":
+          description: "Summary."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/QualitySummary"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/versions/{id}/findings":
+    get:
+      tags:
+        - "Code quality"
+      summary: "List the findings of a version."
+      description: "Findings ordered by severity, path and line, with their review. Filters combine with AND. status defaults to open (not reviewed)."
+      operationId: "get_versions_id_findings"
+      responses:
+        "200":
+          description: "Findings."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  findings:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Finding"
+                  total:
+                    type: "integer"
+                additionalProperties: false
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The version has not finished analysis."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Version id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "category"
+          in: "query"
+          description: "Category."
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "bug"
+              - "vulnerability"
+              - "hotspot"
+              - "smell"
+        - name: "severity"
+          in: "query"
+          description: "Severity."
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "blocker"
+              - "critical"
+              - "major"
+              - "minor"
+              - "info"
+        - name: "rule"
+          in: "query"
+          description: "Rule id."
+          required: false
+          schema:
+            type: "string"
+        - name: "status"
+          in: "query"
+          description: "Review status."
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "open"
+              - "reviewed"
+              - "accepted"
+              - "false_positive"
+              - "safe"
+              - "all"
+        - name: "new"
+          in: "query"
+          description: "Only findings not present in the baseline version."
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "true"
+              - "false"
+        - name: "path"
+          in: "query"
+          description: "A file path, or a directory ending in /."
+          required: false
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          description: "Page size (1-500, default 50)."
+          required: false
+          schema:
+            type: "integer"
+        - name: "offset"
+          in: "query"
+          description: "Offset (default 0)."
+          required: false
+          schema:
+            type: "integer"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/repositories/{id}/findings/{fingerprint}/review":
+    put:
+      tags:
+        - "Code quality"
+      summary: "Review a finding."
+      description: "Record a decision for a finding. It applies to every version of the repository with the same fingerprint. Bugs, vulnerabilities and code smells are reviewed as accepted (real, deliberately not fixed) or false_positive (a comment explaining why is required); security hotspots as safe or accepted. Audited."
+      operationId: "put_repositories_id_findings_fingerprint_review"
+      responses:
+        "204":
+          description: "Reviewed."
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                status:
+                  type: "string"
+                  enum:
+                    - "accepted"
+                    - "false_positive"
+                    - "safe"
+                comment:
+                  type: "string"
+                  maxLength: 2000
+              additionalProperties: false
+              required:
+                - "status"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "fingerprint"
+          in: "path"
+          description: "Finding fingerprint (32 hex characters)."
+          required: true
+          schema:
+            type: "string"
+            pattern: "^[0-9a-f]{32}$"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+    delete:
+      tags:
+        - "Code quality"
+      summary: "Reopen a finding."
+      description: "Delete the review of a finding so it counts as open again. Audited."
+      operationId: "delete_repositories_id_findings_fingerprint_review"
+      responses:
+        "204":
+          description: "Reopened."
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "fingerprint"
+          in: "path"
+          description: "Finding fingerprint (32 hex characters)."
+          required: true
+          schema:
+            type: "string"
+            pattern: "^[0-9a-f]{32}$"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/repositories/{id}/quality-gate":
+    get:
+      tags:
+        - "Code quality"
+      summary: "Get the repository quality gate."
+      description: "The conditions of the repository quality gate. Each condition fails the gate when its metric is greater than the threshold."
+      operationId: "get_repositories_id_quality_gate"
+      responses:
+        "200":
+          description: "Gate."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/QualityGate"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    put:
+      tags:
+        - "Code quality"
+      summary: "Set the repository quality gate."
+      description: "Replace the gate conditions, or send default: true to use the default gate (no new bugs, vulnerabilities or unreviewed hotspots, and no open blocker). Audited."
+      operationId: "put_repositories_id_quality_gate"
+      responses:
+        "200":
+          description: "Gate."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/QualityGate"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                conditions:
+                  type: "array"
+                  maxItems: 20
+                  items:
+                    $ref: "#/components/schemas/GateCondition"
+                default:
+                  type: "boolean"
+              additionalProperties: false
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Repository id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
   "/tokens":
     get:
       tags:
@@ -4460,6 +4971,300 @@ components:
             - "viewer"
         existing_account:
           type: "boolean"
+      additionalProperties: false
+    QualityRule:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        category:
+          type: "string"
+          enum:
+            - "bug"
+            - "vulnerability"
+            - "hotspot"
+            - "smell"
+        severity:
+          type: "string"
+          enum:
+            - "blocker"
+            - "critical"
+            - "major"
+            - "minor"
+            - "info"
+        languages:
+          type: "array"
+          items:
+            type: "string"
+        description:
+          type: "string"
+        remediation:
+          type: "string"
+        source:
+          type: "string"
+          enum:
+            - "engine"
+            - "text"
+      additionalProperties: false
+    GateMetric:
+      type: "object"
+      properties:
+        metric:
+          type: "string"
+        description:
+          type: "string"
+        new_code:
+          type: "boolean"
+      additionalProperties: false
+    GateCondition:
+      type: "object"
+      properties:
+        metric:
+          type: "string"
+        threshold:
+          type: "number"
+          minimum: 0
+      additionalProperties: false
+      required:
+        - "metric"
+        - "threshold"
+    GateResult:
+      type: "object"
+      properties:
+        status:
+          type: "string"
+          enum:
+            - "passed"
+            - "failed"
+        default:
+          type: "boolean"
+        conditions:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              metric:
+                type: "string"
+              threshold:
+                type: "number"
+              actual:
+                type: "number"
+                nullable: true
+              status:
+                type: "string"
+                enum:
+                  - "passed"
+                  - "failed"
+                  - "no_baseline"
+            additionalProperties: false
+      additionalProperties: false
+    QualityGate:
+      type: "object"
+      properties:
+        conditions:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/GateCondition"
+        default:
+          type: "boolean"
+        metrics:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/GateMetric"
+      additionalProperties: false
+    QualitySummary:
+      type: "object"
+      properties:
+        version_id:
+          type: "string"
+        available:
+          type: "boolean"
+        reason:
+          type: "string"
+        baseline_version_id:
+          type: "string"
+          nullable: true
+        gate:
+          $ref: "#/components/schemas/GateResult"
+        categories:
+          type: "object"
+          properties:
+            bug:
+              type: "object"
+              properties:
+                open:
+                  type: "integer"
+                new:
+                  type: "integer"
+                reviewed:
+                  type: "integer"
+                by_severity:
+                  type: "object"
+                  additionalProperties:
+                    type: "integer"
+              additionalProperties: false
+            vulnerability:
+              type: "object"
+              properties:
+                open:
+                  type: "integer"
+                new:
+                  type: "integer"
+                reviewed:
+                  type: "integer"
+                by_severity:
+                  type: "object"
+                  additionalProperties:
+                    type: "integer"
+              additionalProperties: false
+            hotspot:
+              type: "object"
+              properties:
+                open:
+                  type: "integer"
+                new:
+                  type: "integer"
+                reviewed:
+                  type: "integer"
+                by_severity:
+                  type: "object"
+                  additionalProperties:
+                    type: "integer"
+              additionalProperties: false
+            smell:
+              type: "object"
+              properties:
+                open:
+                  type: "integer"
+                new:
+                  type: "integer"
+                reviewed:
+                  type: "integer"
+                by_severity:
+                  type: "object"
+                  additionalProperties:
+                    type: "integer"
+              additionalProperties: false
+          additionalProperties: false
+        grades:
+          type: "object"
+          properties:
+            reliability:
+              type: "string"
+            security:
+              type: "string"
+            security_review:
+              type: "string"
+          additionalProperties: false
+        hotspots_reviewed_percent:
+          type: "number"
+          nullable: true
+        metrics:
+          type: "object"
+          properties:
+            functions:
+              type: "integer"
+            complexity:
+              type: "integer"
+            max_complexity:
+              type: "integer"
+            duplication_compared_lines:
+              type: "integer"
+            duplicated_lines:
+              type: "integer"
+            duplicated_blocks:
+              type: "integer"
+            duplicated_lines_percent:
+              type: "number"
+              nullable: true
+            duplication_skipped:
+              type: "boolean"
+          additionalProperties: false
+        rules:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              rule:
+                type: "string"
+              name:
+                type: "string"
+              category:
+                type: "string"
+              severity:
+                type: "string"
+              count:
+                type: "integer"
+            additionalProperties: false
+      additionalProperties: false
+      required:
+        - "version_id"
+        - "available"
+    Finding:
+      type: "object"
+      properties:
+        seq:
+          type: "integer"
+        rule:
+          type: "string"
+        category:
+          type: "string"
+          enum:
+            - "bug"
+            - "vulnerability"
+            - "hotspot"
+            - "smell"
+        severity:
+          type: "string"
+          enum:
+            - "blocker"
+            - "critical"
+            - "major"
+            - "minor"
+            - "info"
+        path:
+          type: "string"
+        start_line:
+          type: "integer"
+        start_col:
+          type: "integer"
+        end_line:
+          type: "integer"
+        end_col:
+          type: "integer"
+        message:
+          type: "string"
+        function:
+          type: "string"
+        fingerprint:
+          type: "string"
+        is_new:
+          type: "boolean"
+        in_test:
+          type: "boolean"
+        status:
+          type: "string"
+          enum:
+            - "open"
+            - "accepted"
+            - "false_positive"
+            - "safe"
+        review:
+          nullable: true
+          type: "object"
+          properties:
+            status:
+              type: "string"
+            comment:
+              type: "string"
+            reviewed_by:
+              type: "string"
+            reviewed_at:
+              type: "string"
+              format: "date-time"
+          additionalProperties: false
       additionalProperties: false
     Error:
       type: "object"

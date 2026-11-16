@@ -12,6 +12,7 @@ import { Workers } from "./pages/Workers";
 import { Settings } from "./pages/Settings";
 import { AskPage } from "./pages/Ask";
 import { ImpactPage } from "./pages/Impact";
+import { QualityPage } from "./pages/Quality";
 import { ChangesPage } from "./pages/Changes";
 import { AcceptInvite, ForgotPassword, ResetPassword } from "./pages/PublicAuth";
 import { api } from "./api";
@@ -99,6 +100,7 @@ export function App() {
             <Route path="/repositories/:repoId/code" element={<CodePage />} />
             <Route path="/repositories/:repoId/graph" element={<GraphPage />} />
             <Route path="/repositories/:repoId/ask" element={<AskPage />} />
+            <Route path="/repositories/:repoId/quality" element={<QualityPage />} />
             <Route path="/repositories/:repoId/impact" element={<ImpactPage />} />
             <Route path="/repositories/:repoId/changes" element={<ChangesPage />} />
             <Route path="/jobs" element={<Jobs />} />

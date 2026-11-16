@@ -24,8 +24,9 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Language detection | **implemented** for the languages above and common formats | Formats without a parser (shell, SQL, YAML, …) are inventoried, not analyzed. |
 | Semantic resolution | **implemented** | Imports, exports, calls, instantiation, inheritance, JSX, decorator and annotation references across files, with confidence and provenance. Go: packages, `go.mod` modules, `vendor/`, methods across files, embedding. Java, Kotlin, C#: fully qualified types, imports and usings, inheritance, partial types, extension methods. Rust: crates, module tree, `use`, `impl` blocks, traits. C/C++: `#include` resolution, declarations vs definitions, namespaces, out-of-class methods. For the statically typed languages, calls also follow the declared types of variables, fields and call results. [Specification](docs/specifications/semantic-resolution.md). |
 | Knowledge graph | **implemented** | Immutable snapshot per version in PostgreSQL; search, bounded traversal with confidence filtering, file import graph, snapshot diff. |
-| Web interface | **implemented** | Overview, repositories, analysis results, version comparison, dependencies, history, code browser with symbols and resolved/unresolved references, graph explorer, change impact, AI questions and changes, jobs, workers, team and account settings, API tokens, audit log. Light and dark themes. |
+| Web interface | **implemented** | Overview, repositories, analysis results, version comparison, dependencies, history, code browser with symbols and resolved/unresolved references, graph explorer, code quality report with reviews and quality gate, change impact, AI questions and changes, jobs, workers, team and account settings, API tokens, audit log. Light and dark themes. |
 | REST API | **implemented** | [OpenAPI 3](services/api-gateway/openapi.yaml), typed TypeScript SDK in `packages/sdk`. |
+| Code quality and security | **implemented** | 22 syntax-tree rules across the 11 parsed languages (complexity, length, nesting, empty catch blocks, identical branches, unreachable code, SQL injection, OS commands, eval, weak hashes, disabled TLS verification, unsafe deserialization, unbounded C string functions, …), committed credentials and hard-coded passwords in every text file, duplicated code. Findings new since the previous version, reviews (accepted, false positive, safe) that carry over between versions, grades and a configurable quality gate. Pattern matching one file at a time: no types or data flow, so findings are for review. [Rules and definitions](docs/specifications/code-quality.md), [design](docs/adr/0013-code-quality.md). |
 | Team management | **implemented** | Invite people by email address with a role; change roles and remove members (admins manage up to admin, only owners manage owners, the last owner is protected); leave an organization; switch between organizations; change password; password reset links. Links are emailed when SMTP is configured (`USIE_SMTP_*`); otherwise the inviting administrator gets the link once to share. [Design](docs/adr/0012-team-management.md). |
 | Security baseline | **implemented** | Sessions + CSRF, API tokens, organization isolation, RBAC, rate limits, audit log, hardened git, untrusted-input handling. [Security model](docs/security/threat-model.md). |
 | Job orchestration | **implemented** | PostgreSQL queue with leases, heartbeats, retries, cancellation; horizontally scalable workers. |
@@ -35,6 +36,7 @@ same status at `GET /api/v1/system` and on its Settings page.
 | AI code changes | **experimental** | A model proposes search-and-replace edits for files it was shown in full; the server validates and applies them, renders the diff and its change impact. Never written to the repository (download a patch); labelled unverified until a verification run passes. Needs an AI provider. [Design](docs/adr/0011-changes-and-verification.md). |
 | Verification | **experimental** | Fixed build-and-test profiles (Go, Cargo, pytest/unittest, npm, Maven, Gradle, .NET, make) run on a worker in a bubblewrap sandbox: no network by default, no credentials, unprivileged, resource-limited; compared against the unchanged version. Off unless `USIE_SANDBOX=bubblewrap`; profiles need their toolchain on the worker (the image includes Python only). |
 | Neo4j, Kafka, Temporal, Redis, Kubernetes | **planned / deferred** | See the [ADRs](docs/adr/README.md) for why each is not used yet. |
+| Test coverage measurement | **unsupported** | Analysis never runs code. Verification runs (opt-in) execute tests but do not measure coverage. |
 | Type inference, data-flow analysis, dynamic imports with computed specifiers | **unsupported** | Only *declared* types are used (Go, Java); generic type arguments are not substituted. Calls through values of unknown type are reported unresolved, or matched heuristically and marked *inferred*. |
 
 ## Quick start
@@ -114,6 +116,7 @@ services/                    Go services (one module)
   knowledge-graph              graph Store: PostgreSQL + in-memory
   execution-orchestrator       job queue, worker loop, usie-worker
   change-impact                diff mapping, dependents, tests, risk score
+  code-quality                 secrets, duplication, findings, quality gates
   transformation               AI change proposals: edits, validation, diff
   verification                 sandboxed build-and-test profiles (bubblewrap)
 internal/                    pipeline, data access, platform packages
@@ -133,7 +136,7 @@ make test   # everything below
 make lint   # rustfmt, clippy -D warnings, gofmt, go vet, golangci-lint
 ```
 
-- **Rust** (57 tests): extraction behaviour per language, property tests over
+- **Rust** (71 tests): extraction behaviour per language, property tests over
   arbitrary bytes and source-like text, resolver scenarios (packages, path
   aliases, workspaces, CommonJS, shadowing, inheritance, ambiguity, cycles,
   determinism; Go modules, vendoring, build variants, embedding, interfaces;
@@ -141,14 +144,15 @@ make lint   # rustfmt, clippy -D warnings, gofmt, go vet, golangci-lint
   Kotlin final-by-default dispatch; C# namespaces, usings and partial
   types; Rust modules, `use`, impls and traits; C includes, declarations
   and definitions; C++ namespaces, out-of-class methods and virtual calls),
-  and process-level tests of the engine protocol including path-escape
-  refusal.
+  code quality rules (each rule matching its pattern and not its closest
+  safe variant, stable finding contexts), and process-level tests of the
+  engine protocol including path-escape refusal.
 - **Go**: ingestion (classification, ignore rules, symlinks, limits, git URL
   and host validation, ZIP attacks, local-root confinement), a graph store
   conformance suite run against both implementations, engine contract tests,
   pipeline integration tests (incremental re-analysis, uploads, hostile
   archives, cancellation), and API tests (authentication, CSRF, tokens, roles,
-  tenant isolation, invitations, role rules, password resets, email delivery, full analysis through the API, OpenAPI coverage). Each
+  tenant isolation, invitations, role rules, password resets, email delivery, full analysis through the API, code quality findings, new code, reviews and gates, OpenAPI coverage), and secret detection, duplication and gate evaluation. Each
   integration test gets its own PostgreSQL database.
 - **TypeScript**: SDK, design system and application tests.
 
@@ -156,6 +160,6 @@ make lint   # rustfmt, clippy -D warnings, gofmt, go vet, golangci-lint
 
 - [Architecture overview](docs/architecture/overview.md) and [data model](docs/architecture/data-model.md)
 - [Architecture decision records](docs/adr/README.md)
-- Specifications: [semantic resolution](docs/specifications/semantic-resolution.md), [ingestion](docs/specifications/ingestion.md), [intermediate representation](docs/specifications/intermediate-representation.md)
+- Specifications: [code quality](docs/specifications/code-quality.md), [semantic resolution](docs/specifications/semantic-resolution.md), [ingestion](docs/specifications/ingestion.md), [intermediate representation](docs/specifications/intermediate-representation.md)
 - [Security model](docs/security/threat-model.md)
 - [Configuration](docs/operations/configuration.md) and [running](docs/operations/running.md)
