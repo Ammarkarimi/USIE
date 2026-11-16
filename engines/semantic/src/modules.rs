@@ -227,7 +227,7 @@ impl<'a> ModuleIndex<'a> {
 }
 
 impl<'a> Resolver<'a> {
-    fn external(
+    pub(crate) fn external(
         &self,
         ecosystem: &str,
         name: &str,

@@ -484,7 +484,11 @@ impl<'a> Py<'a> {
 
     fn target(&self, expr: Node) -> Target {
         if let Some(path) = self.dotted(expr) {
-            return Target { path, member: None };
+            return Target {
+                path,
+                member: None,
+                ..Default::default()
+            };
         }
         if expr.kind() == "attribute" {
             let member = expr
@@ -499,6 +503,7 @@ impl<'a> Py<'a> {
                             return Target {
                                 path: vec!["super".to_string(), member],
                                 member: None,
+                                ..Default::default()
                             };
                         }
                     }
@@ -507,6 +512,7 @@ impl<'a> Py<'a> {
             return Target {
                 path: Vec::new(),
                 member,
+                ..Default::default()
             };
         }
         Target::default()

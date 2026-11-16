@@ -261,7 +261,7 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 
 	// ---- resolve --------------------------------------------------------
 	done = stage("resolving")
-	cfg := analysis.ResolveConfig{TsConfigs: facts.TsConfigs, Packages: facts.Packages}
+	cfg := analysis.ResolveConfig{TsConfigs: facts.TsConfigs, Packages: facts.Packages, GoModules: facts.GoModules}
 	var inputs []analysis.ResolveFile
 	for _, f := range files {
 		cfg.Paths = append(cfg.Paths, f.Path)
@@ -272,7 +272,8 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 	}
 	seenDep := map[analysis.DeclaredDependency]bool{}
 	for _, d := range facts.Dependencies {
-		if d.Ecosystem == "npm" || d.Ecosystem == "pypi" {
+		switch d.Ecosystem {
+		case "npm", "pypi", "go", "maven":
 			dep := analysis.DeclaredDependency{Ecosystem: d.Ecosystem, Name: d.Name}
 			if !seenDep[dep] {
 				seenDep[dep] = true

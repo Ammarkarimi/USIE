@@ -1,6 +1,6 @@
 //! Shared extraction machinery used by every language adapter.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use tree_sitter::Node;
 use usie_ir::{
     Attrs, Diagnostic, DiagnosticCode, Export, Import, NamePath, Reference, ReferenceKind, Span,
@@ -195,6 +195,7 @@ impl<'a> Builder<'a> {
             scope: cx.scope,
             path: target.path,
             member: target.member,
+            chain: target.chain,
             text: self.text_truncated(text_node),
             span: span(span_node),
         });
@@ -236,6 +237,125 @@ impl<'a> Builder<'a> {
     }
 }
 
+/// Declared types of local bindings (parameters, typed variables) per
+/// function-like symbol, for statically typed languages. A name bound more
+/// than once with different or unknown types gets no recorded type, so a
+/// recorded type is never a guess.
+///
+/// A local initialized from a call (`x := f()`, `var x = f();`) records the
+/// callee and result position instead; the resolver takes the type from the
+/// callee's declared result type when the callee resolves.
+#[derive(Default)]
+pub(crate) struct LocalTypes {
+    by_scope: HashMap<u32, BTreeMap<String, Option<LocalType>>>,
+}
+
+#[derive(Clone, PartialEq)]
+enum LocalType {
+    Declared(Vec<String>),
+    CallResult(Vec<String>, usize),
+}
+
+impl LocalTypes {
+    pub fn bind(&mut self, scope: Option<u32>, name: &str, ty: Option<Vec<String>>) {
+        let ty = ty.filter(|t| !t.is_empty()).map(LocalType::Declared);
+        self.insert(scope, name, ty);
+    }
+
+    /// `name` holds result number `index` of a call of `callee`.
+    pub fn bind_call(&mut self, scope: Option<u32>, name: &str, callee: Vec<String>, index: usize) {
+        let ty = (!callee.is_empty()).then_some(LocalType::CallResult(callee, index));
+        self.insert(scope, name, ty);
+    }
+
+    fn insert(&mut self, scope: Option<u32>, name: &str, ty: Option<LocalType>) {
+        let Some(scope) = scope else { return };
+        if name.is_empty() || name == "_" {
+            return;
+        }
+        let names = self.by_scope.entry(scope).or_default();
+        match names.get_mut(name) {
+            None => {
+                names.insert(name.to_string(), ty);
+            }
+            Some(existing) => {
+                if *existing != ty {
+                    *existing = None;
+                }
+            }
+        }
+    }
+
+    /// Store the known types as `attrs.local_types` (name → type segments)
+    /// and call-initialized locals as `attrs.local_calls` (name →
+    /// `{"callee": segments, "result": index}`).
+    pub fn apply(self, b: &mut Builder) {
+        for (scope, names) in self.by_scope {
+            let mut declared = serde_json::Map::new();
+            let mut calls = serde_json::Map::new();
+            for (name, ty) in names {
+                match ty {
+                    Some(LocalType::Declared(t)) => {
+                        declared.insert(name, t.into());
+                    }
+                    Some(LocalType::CallResult(callee, index)) => {
+                        calls.insert(
+                            name,
+                            serde_json::json!({ "callee": callee, "result": index }),
+                        );
+                    }
+                    None => {}
+                }
+            }
+            let sym = b.sym(scope);
+            if !declared.is_empty() {
+                sym.attrs.insert("local_types".into(), declared.into());
+            }
+            if !calls.is_empty() {
+                sym.attrs.insert("local_calls".into(), calls.into());
+            }
+        }
+    }
+}
+
+/// First line of the documentation comment directly above `node`: the
+/// topmost comment of the contiguous block of comments that ends on the line
+/// before it. Handles `//` line blocks (Go) and `/** */` blocks (Java).
+pub(crate) fn doc_comment(b: &Builder, node: Node) -> Option<String> {
+    let is_comment = |n: Node| matches!(n.kind(), "comment" | "line_comment" | "block_comment");
+    let mut next_row = node.start_position().row;
+    let mut top = None;
+    let mut cur = node.prev_sibling();
+    while let Some(prev) = cur {
+        if !is_comment(prev) || prev.end_position().row + 1 < next_row {
+            break;
+        }
+        next_row = prev.start_position().row;
+        top = Some(prev);
+        // A block comment is a complete doc comment on its own.
+        if b.src[prev.start_byte()..].starts_with(b"/*") {
+            break;
+        }
+        cur = prev.prev_sibling();
+    }
+    let text = b.text(top?);
+    let body = text
+        .strip_prefix("/**")
+        .or_else(|| text.strip_prefix("/*"))
+        .map(|t| t.strip_suffix("*/").unwrap_or(t).to_string())
+        .unwrap_or(text);
+    let line = body
+        .lines()
+        .map(|l| {
+            l.trim()
+                .trim_start_matches("//")
+                .trim_start_matches('*')
+                .trim()
+        })
+        .find(|l| !l.is_empty() && !l.starts_with('@'))?;
+    Some(truncate(line, 200))
+}
+
 pub(crate) struct Extracted {
     pub symbols: Vec<Symbol>,
     pub imports: Vec<Import>,
@@ -250,7 +370,11 @@ pub(crate) struct Extracted {
 pub(crate) struct Target {
     pub path: Vec<String>,
     pub member: Option<String>,
+    pub chain: Vec<String>,
 }
+
+/// Longest call chain recorded for one reference.
+pub(crate) const MAX_CHAIN: usize = 32;
 
 pub(crate) fn span(node: Node) -> Span {
     let s = node.start_position();

@@ -569,3 +569,208 @@ fn output_is_deterministic_modulo_timing() {
         serde_json::to_string(&b).unwrap()
     );
 }
+
+#[test]
+fn go_symbols_imports_and_references() {
+    let ir = ir(
+        Language::Go,
+        r#"package store
+
+import (
+	"fmt"
+	h "net/http"
+	. "strings"
+	_ "embed"
+)
+
+// Store keeps items.
+type Store struct {
+	Base
+	db   *DB
+	name string
+}
+
+type Saver interface {
+	io.Writer
+	Save(n int) error
+}
+
+const A, B = 1, 2
+
+func (s *Store) Save(n int) error {
+	v := Item{Name: "x"}
+	fmt.Println(v)
+	s.db.Exec()
+	h.Get("u")
+	return nil
+}
+
+func helper[T any](t T) {}
+"#,
+    );
+    assert_eq!(ir.attrs["package"], "store");
+    let store = sym(&ir, "Store");
+    assert_eq!(store.kind, SymbolKind::Class);
+    assert!(store.exported);
+    assert_eq!(store.doc.as_deref(), Some("Store keeps items."));
+    assert_eq!(store.bases[0].segments, vec!["Base"]);
+    assert_eq!(
+        sym(&ir, "Store.db").attrs["type_path"],
+        serde_json::json!(["DB"])
+    );
+    let saver = sym(&ir, "Saver");
+    assert_eq!(saver.kind, SymbolKind::Interface);
+    assert_eq!(saver.bases[0].segments, vec!["io", "Writer"]);
+    assert_eq!(sym(&ir, "Saver.Save").kind, SymbolKind::Method);
+    // Methods are package-level symbols qualified by their receiver type.
+    let save = sym(&ir, "Store.Save");
+    assert_eq!((save.kind, save.parent), (SymbolKind::Method, None));
+    assert_eq!(save.attrs["receiver_type"], "Store");
+    assert_eq!(save.attrs["local_types"]["s"], serde_json::json!(["Store"]));
+    assert_eq!(save.attrs["local_types"]["v"], serde_json::json!(["Item"]));
+    assert!(!sym(&ir, "helper").exported);
+    assert!(names(&ir).contains(&"A") && names(&ir).contains(&"B"));
+
+    let kinds: Vec<(ImportKind, &str, Option<&str>)> = ir
+        .imports
+        .iter()
+        .map(|i| (i.kind, i.module.as_str(), i.local.as_deref()))
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            (ImportKind::Namespace, "fmt", None),
+            (ImportKind::Namespace, "net/http", Some("h")),
+            (ImportKind::Wildcard, "strings", None),
+            (ImportKind::SideEffect, "embed", None),
+        ]
+    );
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::New,
+        Some("Store.Save"),
+        &["Item"]
+    ));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::Call,
+        Some("Store.Save"),
+        &["fmt", "Println"]
+    ));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::Call,
+        Some("Store.Save"),
+        &["s", "db", "Exec"]
+    ));
+    // Keys of keyed literals are field names, not references.
+    assert!(!ir.references.iter().any(|r| r.path == vec!["Name"]));
+}
+
+#[test]
+fn java_symbols_imports_and_references() {
+    let ir = ir(
+        Language::Java,
+        r#"package com.acme;
+
+import java.util.List;
+import java.util.*;
+import static java.lang.Math.max;
+
+/** A repository. */
+@Service
+public class Repo extends Base<User> implements Saver {
+    private final Db db;
+
+    public Repo(Db db) { super(db); this.db = db; }
+
+    @Override
+    public List<User> find(String name) {
+        var x = new ArrayList<User>();
+        db.query(name);
+        this.helper();
+        max(1, 2);
+        return x;
+    }
+
+    enum Color { RED; void paint() {} }
+    record Point(int x, Owner owner) {}
+}
+"#,
+    );
+    assert_eq!(ir.attrs["package"], "com.acme");
+    let repo = sym(&ir, "Repo");
+    assert!(repo.exported);
+    assert_eq!(repo.doc.as_deref(), Some("A repository."));
+    assert_eq!(repo.bases[0].segments, vec!["Base"]);
+    assert_eq!(repo.implements[0].segments, vec!["Saver"]);
+    assert_eq!(repo.attrs["annotations"], serde_json::json!(["Service"]));
+    assert_eq!(
+        sym(&ir, "Repo.db").attrs["type_path"],
+        serde_json::json!(["Db"])
+    );
+    assert_eq!(sym(&ir, "Repo.Repo").attrs["constructor"], true);
+    let find = sym(&ir, "Repo.find");
+    assert_eq!(find.signature.as_deref(), Some("(String name): List<User>"));
+    assert_eq!(
+        find.attrs["local_types"]["x"],
+        serde_json::json!(["ArrayList"])
+    );
+    assert_eq!(sym(&ir, "Repo.Color").attrs["type_kind"], "enum");
+    assert_eq!(sym(&ir, "Repo.Color.RED").attrs["enum_constant"], true);
+    assert_eq!(
+        sym(&ir, "Repo.Point.owner").attrs["type_path"],
+        serde_json::json!(["Owner"])
+    );
+
+    let imports: Vec<(ImportKind, &str, Option<&str>)> = ir
+        .imports
+        .iter()
+        .map(|i| (i.kind, i.module.as_str(), i.imported.as_deref()))
+        .collect();
+    assert_eq!(
+        imports,
+        vec![
+            (ImportKind::Named, "java.util", Some("List")),
+            (ImportKind::Wildcard, "java.util", None),
+            (ImportKind::Named, "java.lang.Math", Some("max")),
+        ]
+    );
+    assert!(has_ref(&ir, ReferenceKind::Decorator, None, &["Service"]));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::Decorator,
+        Some("Repo"),
+        &["Override"]
+    ));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::Call,
+        Some("Repo.Repo"),
+        &["super"]
+    ));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::New,
+        Some("Repo.find"),
+        &["ArrayList"]
+    ));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::Call,
+        Some("Repo.find"),
+        &["db", "query"]
+    ));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::Call,
+        Some("Repo.find"),
+        &["this", "helper"]
+    ));
+    assert!(has_ref(
+        &ir,
+        ReferenceKind::Call,
+        Some("Repo.find"),
+        &["max"]
+    ));
+}

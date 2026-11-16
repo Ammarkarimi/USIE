@@ -30,11 +30,22 @@ pub struct ProjectConfig {
     /// Extra Python source roots (directories on the import path).
     #[serde(default)]
     pub python_roots: Vec<String>,
+    /// Go modules defined in the repository (one per `go.mod`).
+    #[serde(default)]
+    pub go_modules: Vec<GoModule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoModule {
+    /// Directory containing `go.mod` ("" for the root).
+    pub dir: String,
+    /// The `module` path declared in `go.mod`.
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredDependency {
-    /// `npm` or `pypi`.
+    /// `npm`, `pypi`, `go` (module path) or `maven` (`group:artifact`).
     pub ecosystem: String,
     pub name: String,
 }

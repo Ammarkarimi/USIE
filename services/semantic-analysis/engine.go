@@ -179,6 +179,7 @@ type ResolveConfig struct {
 	TsConfigs    any                  `json:"tsconfigs"`
 	Packages     any                  `json:"packages"`
 	PythonRoots  []string             `json:"python_roots"`
+	GoModules    any                  `json:"go_modules"`
 }
 
 type DeclaredDependency struct {
@@ -268,6 +269,9 @@ func (e Engine) Resolve(ctx context.Context, cfg ResolveConfig, files []ResolveF
 	}
 	if isNil(cfg.TsConfigs) {
 		cfg.TsConfigs = []any{}
+	}
+	if isNil(cfg.GoModules) {
+		cfg.GoModules = []any{}
 	}
 	if isNil(cfg.Packages) {
 		cfg.Packages = []any{}

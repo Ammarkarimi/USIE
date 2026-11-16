@@ -63,6 +63,10 @@ func ParserLanguage(p string) string {
 		return "typescript"
 	case ".tsx":
 		return "tsx"
+	case ".go":
+		return "go"
+	case ".java":
+		return "java"
 	}
 	return ""
 }

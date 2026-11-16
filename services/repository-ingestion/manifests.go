@@ -34,11 +34,18 @@ type WorkspacePackage struct {
 	Entries []string `json:"entries,omitempty"`
 }
 
+// GoModule is a Go module defined by a go.mod file in the repository.
+type GoModule struct {
+	Dir  string `json:"dir"`
+	Path string `json:"path"`
+}
+
 // ManifestFacts is everything extracted from manifests in one repository.
 type ManifestFacts struct {
 	Dependencies []Dependency
 	TsConfigs    []TsConfig
 	Packages     []WorkspacePackage
+	GoModules    []GoModule
 	BuildSystems []string
 	// Problems lists manifests that could not be parsed. They are reported,
 	// not ignored.
@@ -122,7 +129,7 @@ func (c *ManifestCollector) Add(p string, content []byte) {
 		c.builds["python"] = true
 	case base == "go.mod":
 		c.builds["go"] = true
-		c.goMod(p, content)
+		c.goMod(p, dir, content)
 	case base == "cargo.toml":
 		c.builds["cargo"] = true
 		c.cargo(p, content)
@@ -131,6 +138,7 @@ func (c *ManifestCollector) Add(p string, content []byte) {
 		c.pom(p, content)
 	case base == "build.gradle" || base == "build.gradle.kts":
 		c.builds["gradle"] = true
+		c.gradle(p, content)
 	case base == "cmakelists.txt":
 		c.builds["cmake"] = true
 	case base == "makefile":
@@ -417,7 +425,7 @@ func (c *ManifestCollector) pyproject(p string, content []byte) {
 	}
 }
 
-func (c *ManifestCollector) goMod(p string, content []byte) {
+func (c *ManifestCollector) goMod(p, dir string, content []byte) {
 	inBlock := false
 	for _, line := range strings.Split(string(content), "\n") {
 		if i := strings.Index(line, "//"); i >= 0 {
@@ -426,6 +434,8 @@ func (c *ManifestCollector) goMod(p string, content []byte) {
 		fields := strings.Fields(line)
 		switch {
 		case len(fields) == 0:
+		case !inBlock && fields[0] == "module" && len(fields) >= 2:
+			c.facts.GoModules = append(c.facts.GoModules, GoModule{Dir: dir, Path: strings.Trim(fields[1], `"`)})
 		case inBlock && fields[0] == ")":
 			inBlock = false
 		case inBlock && len(fields) >= 2:
@@ -435,6 +445,29 @@ func (c *ManifestCollector) goMod(p string, content []byte) {
 		case fields[0] == "require" && len(fields) >= 3:
 			c.addDep(Dependency{ManifestPath: p, Ecosystem: "go", Name: fields[1], Requirement: fields[2], Scope: "runtime"})
 		}
+	}
+}
+
+// gradleDep matches string-notation dependency declarations such as
+// `implementation 'g:a:1.0'` and `testImplementation("g:a:1.0")`. Build
+// scripts are code and are not executed; dependencies declared in other
+// ways (version catalogs, variables, project(...)) are not seen.
+var gradleDep = regexp.MustCompile(`^\s*(implementation|api|compileOnly|runtimeOnly|annotationProcessor|kapt|compile|testImplementation|testCompileOnly|testRuntimeOnly|androidTestImplementation)\s*\(?\s*["']([A-Za-z0-9_.\-]+):([A-Za-z0-9_.\-]+)(?::([^"'@]+))?[^"']*["']`)
+
+func (c *ManifestCollector) gradle(p string, content []byte) {
+	for _, line := range strings.Split(string(content), "\n") {
+		m := gradleDep.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		scope := "runtime"
+		switch {
+		case strings.HasPrefix(m[1], "test") || strings.HasPrefix(m[1], "androidTest"):
+			scope = "dev"
+		case m[1] == "compileOnly" || m[1] == "annotationProcessor" || m[1] == "kapt":
+			scope = "build"
+		}
+		c.addDep(Dependency{ManifestPath: p, Ecosystem: "maven", Name: m[2] + ":" + m[3], Requirement: m[4], Scope: scope})
 	}
 }
 

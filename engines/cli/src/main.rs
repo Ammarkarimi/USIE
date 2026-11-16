@@ -23,12 +23,7 @@ use usie_ir::{FileIr, Language, IR_SCHEMA_VERSION};
 use usie_parser::{ParseError, ParseOptions};
 use usie_semantic::{Project, ProjectConfig, SourceFile};
 
-const LANGUAGES: [Language; 4] = [
-    Language::Python,
-    Language::Javascript,
-    Language::Typescript,
-    Language::Tsx,
-];
+const LANGUAGES: [Language; 6] = Language::ALL;
 const BATCH: usize = 256;
 /// Extraction recurses over the syntax tree; give workers room for deep input.
 const WORKER_STACK: usize = 16 * 1024 * 1024;

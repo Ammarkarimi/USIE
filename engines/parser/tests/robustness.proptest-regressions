@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4573b22d1a6d2245e883c928b6e040d193d1fbe3200552a332dc35678c785fac # shrinks to parts = ["func (r *T[K]) M(a, b int) (c error) { "]

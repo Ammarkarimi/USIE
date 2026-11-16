@@ -9,12 +9,16 @@
 //! The rules are specified in `docs/specifications/semantic-resolution.md`.
 
 mod builtins;
+mod golang;
+mod java;
 pub mod model;
 mod modules;
 mod paths;
 
 pub use model::*;
 
+use golang::{declared_type, is_type_kind, GoIndex};
+use java::JavaIndex;
 use modules::ModuleIndex;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -33,7 +37,16 @@ pub fn file_key(path: &str) -> String {
     format!("file:{path}")
 }
 
-type SymRef = (usize, u32);
+/// Key of a directory node; the repository root is the `repo` node.
+pub fn dir_key(dir: &str) -> String {
+    if dir.is_empty() {
+        "repo".to_string()
+    } else {
+        format!("dir:{dir}")
+    }
+}
+
+pub(crate) type SymRef = (usize, u32);
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Target {
@@ -42,6 +55,10 @@ pub(crate) enum Target {
     /// A repository file that is not parsed source (stylesheet, JSON, …).
     Asset(String),
     External(String),
+    /// A Go package of the repository (index into `GoIndex::packages`).
+    GoPackage(usize),
+    /// A Java package of the repository, by name.
+    JavaPackage(String),
 }
 
 #[derive(Debug, Clone)]
@@ -70,7 +87,7 @@ impl Miss {
             unknown_receiver: false,
         }
     }
-    fn receiver(rule: &'static str, reason: impl Into<String>) -> Miss {
+    pub(crate) fn receiver(rule: &'static str, reason: impl Into<String>) -> Miss {
         Miss {
             rule,
             reason: reason.into(),
@@ -107,11 +124,15 @@ struct EdgeAcc {
 pub(crate) struct Resolver<'a> {
     pub files: Vec<FileIx<'a>>,
     pub modules: ModuleIndex<'a>,
+    pub(crate) go: GoIndex,
+    pub(crate) java: JavaIndex,
     methods_by_name: HashMap<(LanguageFamily, &'a str), Vec<SymRef>>,
     bases: RefCell<HashMap<SymRef, Vec<SymRef>>>,
     /// Memoized module-surface lookups, keyed by (file, name). `None` marks a
     /// lookup in progress, which is how import cycles are detected.
     surface_memo: RefCell<HashMap<(usize, String), Option<Res>>>,
+    /// Nesting of `call_result_value` lookups (`a := f(); b := a.g()`).
+    call_depth: std::cell::Cell<u32>,
     pub externals: RefCell<BTreeMap<String, NodeRecord>>,
     edges: BTreeMap<(String, String, &'static str), EdgeAcc>,
     refs: Vec<ReferenceRecord>,
@@ -177,16 +198,23 @@ impl<'a> Resolver<'a> {
             });
         }
         let modules = ModuleIndex::new(&project.config, &files);
-        Resolver {
+        let go = GoIndex::new(&project.config, &files);
+        let java = JavaIndex::new(&project.config, &files);
+        let mut resolver = Resolver {
             files,
             modules,
+            go,
+            java,
             methods_by_name,
             bases: RefCell::new(HashMap::new()),
             surface_memo: RefCell::new(HashMap::new()),
+            call_depth: std::cell::Cell::new(0),
             externals: RefCell::new(BTreeMap::new()),
             edges: BTreeMap::new(),
             refs: Vec::new(),
-        }
+        };
+        resolver.go_bind_imports();
+        resolver
     }
 
     fn run(mut self) -> Resolution {
@@ -358,8 +386,16 @@ impl<'a> Resolver<'a> {
         let ir = self.files[fi].ir;
         let family = self.files[fi].family;
         for (idx, imp) in ir.imports.iter().enumerate() {
-            let text = format!("{}{}", ".".repeat(imp.level as usize), imp.module);
+            let text = match (family, imp.kind) {
+                (LanguageFamily::Java, ImportKind::Wildcard) => format!("{}.*", imp.module),
+                (LanguageFamily::Java, _) if !imp.module.is_empty() => {
+                    format!("{}.{}", imp.module, imp.imported.as_deref().unwrap_or(""))
+                }
+                _ => format!("{}{}", ".".repeat(imp.level as usize), imp.module),
+            };
             let res = match family {
+                LanguageFamily::Go => self.go_import(fi, idx),
+                LanguageFamily::Java => self.java_import(fi, idx),
                 LanguageFamily::Ecmascript => self.es_module(fi, &imp.module),
                 LanguageFamily::Python => {
                     let module = self.py_module(fi, &imp.module, imp.level);
@@ -451,6 +487,8 @@ impl<'a> Resolver<'a> {
             let res = match family {
                 LanguageFamily::Ecmascript => self.es_export(fi, &exp.name, 0),
                 LanguageFamily::Python => self.py_attr(fi, &exp.name, 0),
+                // Export status is syntactic (`exported`); no export lists.
+                LanguageFamily::Go | LanguageFamily::Java => continue,
             };
             if let Ok(Found {
                 target: Target::Symbol(tf, tid),
@@ -474,7 +512,9 @@ impl<'a> Resolver<'a> {
         let ir = self.files[fi].ir;
         let family = self.files[fi].family;
         for r in &ir.references {
-            let mut res = if r.path.is_empty() {
+            let mut res = if r.path.is_empty() && !r.chain.is_empty() {
+                self.resolve_chain(fi, r.scope, &r.chain)
+            } else if r.path.is_empty() {
                 match &r.member {
                     Some(_) => Err(Miss::receiver(
                         "receiver.dynamic",
@@ -505,7 +545,7 @@ impl<'a> Resolver<'a> {
                             ..f
                         })
                     }
-                    LanguageFamily::Python => Err(Miss::new(
+                    _ => Err(Miss::new(
                         "callee.module",
                         "a module object is not callable",
                     )),
@@ -529,10 +569,20 @@ impl<'a> Resolver<'a> {
                 (
                     ReferenceKind::Call,
                     Ok(Found {
-                        rule: "es.call.super-constructor",
+                        rule: "es.call.super-constructor" | "java.call.super-constructor",
                         ..
                     }),
                 ) => "CALLS",
+                // A conversion to a named non-struct type (`Celsius(x)`).
+                (
+                    ReferenceKind::Call,
+                    Ok(Found {
+                        target: Target::Symbol(tf, tid),
+                        ..
+                    }),
+                ) if self.files[*tf].ir.symbols[*tid as usize].kind == SymbolKind::Type => {
+                    "REFERENCES"
+                }
                 (
                     ReferenceKind::Call,
                     Ok(Found {
@@ -566,6 +616,11 @@ impl<'a> Resolver<'a> {
             Target::File(f) => file_key(self.files[*f].path),
             Target::Asset(path) => file_key(path),
             Target::External(key) => key.clone(),
+            Target::GoPackage(p) => dir_key(&self.go.packages[*p].dir),
+            Target::JavaPackage(name) => match self.java.package_dir(name, &self.files) {
+                Some((dir, _)) => dir_key(&dir),
+                None => "repo".to_string(),
+            },
         }
     }
 
@@ -682,17 +737,16 @@ impl<'a> Resolver<'a> {
     fn child_named(&self, fi: usize, parent: u32, name: &str) -> Option<u32> {
         let ir = self.files[fi].ir;
         let kids = self.files[fi].children.get(&parent)?;
+        // Java constructors are not members; they share the class's name.
+        let named = |k: &u32| {
+            let sym = &ir.symbols[*k as usize];
+            sym.name == name && !sym.attrs.contains_key("constructor")
+        };
         // Prefer callables so `Class.method` wins over a same-named field.
         kids.iter()
             .copied()
-            .find(|k| {
-                ir.symbols[*k as usize].name == name && ir.symbols[*k as usize].kind.is_callable()
-            })
-            .or_else(|| {
-                kids.iter()
-                    .copied()
-                    .find(|k| ir.symbols[*k as usize].name == name)
-            })
+            .find(|k| named(k) && ir.symbols[*k as usize].kind.is_callable())
+            .or_else(|| kids.iter().copied().find(named))
     }
 
     /// A member of a class or interface, searching resolved base classes.
@@ -700,6 +754,11 @@ impl<'a> Resolver<'a> {
     fn member(&self, class: SymRef, name: &str, depth: u32) -> Option<(SymRef, bool)> {
         if let Some(id) = self.child_named(class.0, class.1, name) {
             return Some(((class.0, id), false));
+        }
+        if self.files[class.0].family == LanguageFamily::Go {
+            if let Some(m) = self.go_method(class, name) {
+                return Some((m, false));
+            }
         }
         self.inherited_member(class, name, depth)
     }
@@ -759,6 +818,11 @@ impl<'a> Resolver<'a> {
 
     /// Resolve a dotted name as seen from `scope` in file `fi`.
     pub(crate) fn lookup(&self, fi: usize, scope: Option<u32>, path: &[String]) -> Res {
+        match self.files[fi].family {
+            LanguageFamily::Go => return self.go_lookup(fi, scope, path),
+            LanguageFamily::Java => return self.java_lookup(fi, scope, path),
+            _ => {}
+        }
         let file = &self.files[fi];
         let ir = file.ir;
         let first = path[0].as_str();
@@ -974,14 +1038,35 @@ impl<'a> Resolver<'a> {
     /// Follow member accesses from a resolved base.
     fn descend(&self, base: Found, rest: &[String]) -> Res {
         let mut cur = base;
-        for seg in rest {
+        for (i, seg) in rest.iter().enumerate() {
             cur = match cur.target {
                 Target::Symbol(f, id) => {
                     let sym = self.sym((f, id));
-                    if !matches!(
+                    let family = self.files[f].family;
+                    let typed = matches!(family, LanguageFamily::Go | LanguageFamily::Java);
+                    if typed && sym.kind == SymbolKind::Variable {
+                        if let Some(ty) = declared_type(sym) {
+                            // A field or variable of a declared type: members
+                            // of the type.
+                            let rule = if family == LanguageFamily::Go {
+                                "go.typed-value"
+                            } else {
+                                "java.typed-value"
+                            };
+                            let found =
+                                self.typed_value(f, sym.parent, &sym.name, &ty, &rest[i..], rule)?;
+                            return Ok(Found {
+                                confidence: found.confidence.min(cur.confidence),
+                                ..found
+                            });
+                        }
+                    }
+                    let has_members = matches!(
                         sym.kind,
                         SymbolKind::Class | SymbolKind::Interface | SymbolKind::Namespace
-                    ) {
+                    ) || (family == LanguageFamily::Go
+                        && sym.kind == SymbolKind::Type);
+                    if !has_members {
                         return Err(Miss::receiver(
                             "member.value-type-unknown",
                             format!(
@@ -1002,13 +1087,18 @@ impl<'a> Resolver<'a> {
                             rule: cur.rule,
                         },
                         None => {
+                            if family == LanguageFamily::Java {
+                                if let Some(found) = self.java_external_base((f, id), 0) {
+                                    return Ok(found);
+                                }
+                            }
                             return Err(Miss::new(
                                 "member.not-found",
                                 format!(
                                     "`{}` has no statically known member `{seg}`",
                                     sym.qualified_name
                                 ),
-                            ))
+                            ));
                         }
                     }
                 }
@@ -1016,12 +1106,32 @@ impl<'a> Resolver<'a> {
                     let found = match self.files[tf].family {
                         LanguageFamily::Ecmascript => self.es_export(tf, seg, 0)?,
                         LanguageFamily::Python => self.py_attr(tf, seg, 0)?,
+                        _ => {
+                            return Err(Miss::new(
+                                "member.file",
+                                "members of this file are not module attributes",
+                            ))
+                        }
                     };
                     Found {
                         confidence: found.confidence.min(cur.confidence),
                         rule: cur.rule,
                         ..found
                     }
+                }
+                Target::GoPackage(p) => {
+                    let found = self.go_package_member(p, seg)?;
+                    Found {
+                        confidence: found.confidence.min(cur.confidence),
+                        rule: cur.rule,
+                        ..found
+                    }
+                }
+                Target::JavaPackage(ref name) => {
+                    return Err(Miss::new(
+                        "member.package",
+                        format!("`{name}.{seg}` is not a type in the repository"),
+                    ))
                 }
                 Target::Asset(path) => {
                     return Err(Miss::new(
@@ -1034,6 +1144,312 @@ impl<'a> Resolver<'a> {
             };
         }
         Ok(cur)
+    }
+
+    /// Follow a call chain (`Reference::chain`) through declared result types.
+    fn resolve_chain(&self, fi: usize, scope: Option<u32>, chain: &[String]) -> Res {
+        let family = self.files[fi].family;
+        let rule = if family == LanguageFamily::Go {
+            "go.call-result"
+        } else {
+            "java.call-result"
+        };
+        let mut found: Option<Found> = None;
+        let mut value: Option<(Found, String)> = None;
+        let mut i = 0;
+        while i < chain.len() {
+            let token = chain[i].as_str();
+            if token == "()" {
+                let callee = found.take().ok_or_else(|| {
+                    Miss::receiver("receiver.dynamic", "the called value is not tracked")
+                })?;
+                value = Some(self.call_result_type(callee, rule)?);
+                i += 1;
+                continue;
+            }
+            if let Some(ty) = token.strip_prefix("type:") {
+                let segments: Vec<String> = ty.split('.').map(str::to_string).collect();
+                let resolved = match self.lookup(fi, scope, &segments) {
+                    Ok(t) => t,
+                    Err(miss) if miss.builtin => return Err(miss),
+                    Err(miss) => {
+                        return Err(Miss::receiver(
+                            rule,
+                            format!("type `{ty}` is not resolved ({})", miss.reason),
+                        ))
+                    }
+                };
+                value = Some((resolved, ty.to_string()));
+                i += 1;
+                continue;
+            }
+            let mut j = i;
+            while j < chain.len() && chain[j] != "()" && !chain[j].starts_with("type:") {
+                j += 1;
+            }
+            let names = &chain[i..j];
+            found = Some(match value.take() {
+                None => self.lookup(fi, scope, names)?,
+                Some((ty, text)) => {
+                    let confidence = ty.confidence;
+                    let f = self.typed_member(family, ty, "the value", &text, names, rule)?;
+                    Found {
+                        confidence: f.confidence.min(confidence),
+                        ..f
+                    }
+                }
+            });
+            i = j;
+        }
+        found.ok_or_else(|| Miss::receiver("receiver.dynamic", "receiver is a computed expression"))
+    }
+
+    /// The declared result type of calling `callee` (a function, method or,
+    /// for conversions, a type), with a description for messages.
+    fn call_result_type(&self, callee: Found, rule: &'static str) -> Result<(Found, String), Miss> {
+        let (cf, cid) =
+            match callee.target {
+                Target::Symbol(cf, cid) => (cf, cid),
+                Target::External(_) => return Err(Miss::receiver(
+                    rule,
+                    "the result of a function outside the repository has a type that is not known",
+                )),
+                _ => return Err(Miss::receiver(rule, "the called value is not a function")),
+            };
+        let csym = self.sym((cf, cid));
+        if is_type_kind(csym.kind) {
+            return Ok((callee, csym.name.clone()));
+        }
+        let ty: Vec<String> = csym
+            .attrs
+            .get("result_types")
+            .and_then(|r| r.get(0))
+            .and_then(|t| t.as_array())
+            .map(|t| {
+                t.iter()
+                    .filter_map(|s| s.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if ty.is_empty() {
+            return Err(Miss::receiver(
+                rule,
+                format!(
+                    "`{}` has no declared named result type",
+                    csym.qualified_name
+                ),
+            ));
+        }
+        match self.lookup(cf, csym.parent, &ty) {
+            Ok(t) => Ok((
+                Found {
+                    confidence: t.confidence.min(callee.confidence),
+                    ..t
+                },
+                ty.join("."),
+            )),
+            Err(miss) if miss.builtin => Err(miss),
+            Err(miss) => Err(Miss::receiver(
+                rule,
+                format!(
+                    "result type `{}` of `{}` is not resolved ({})",
+                    ty.join("."),
+                    csym.qualified_name,
+                    miss.reason
+                ),
+            )),
+        }
+    }
+
+    /// A local initialized from a call (`attrs.local_calls`): members of the
+    /// callee's declared result type. `None` when `name` is not such a local.
+    pub(crate) fn call_result_value(
+        &self,
+        fi: usize,
+        scope: u32,
+        name: &str,
+        rest: &[String],
+        rule: &'static str,
+    ) -> Option<Res> {
+        let sym = &self.files[fi].ir.symbols[scope as usize];
+        let call = sym.attrs.get("local_calls")?.get(name)?;
+        let callee: Vec<String> = call
+            .get("callee")?
+            .as_array()?
+            .iter()
+            .filter_map(|s| s.as_str().map(str::to_string))
+            .collect();
+        let index = call.get("result")?.as_u64()? as usize;
+        if callee.is_empty() {
+            return None;
+        }
+        let callee_text = callee.join(".");
+        if self.call_depth.get() >= 8 {
+            return Some(Err(Miss::receiver(
+                rule,
+                format!("`{name}` is initialized by a chain of calls too deep to follow"),
+            )));
+        }
+        if rest.is_empty() {
+            return Some(Err(Miss::receiver(
+                rule,
+                format!("`{name}` holds the result of `{callee_text}`; calling it is not tracked"),
+            )));
+        }
+        self.call_depth.set(self.call_depth.get() + 1);
+        let callee_res = self.lookup(fi, Some(scope), &callee);
+        self.call_depth.set(self.call_depth.get() - 1);
+        let family = self.files[fi].family;
+        let res = match callee_res {
+            Ok(Found {
+                target: Target::Symbol(cf, cid),
+                confidence,
+                ..
+            }) => {
+                let csym = self.sym((cf, cid));
+                if is_type_kind(csym.kind) {
+                    // A conversion `T(x)`: the value has type `T`.
+                    let resolved = Found {
+                        target: Target::Symbol(cf, cid),
+                        confidence,
+                        rule,
+                    };
+                    self.typed_member(family, resolved, name, &csym.name, rest, rule)
+                } else {
+                    let ty: Option<Vec<String>> = csym
+                        .attrs
+                        .get("result_types")
+                        .and_then(|r| r.get(index))
+                        .and_then(|t| t.as_array())
+                        .map(|t| {
+                            t.iter()
+                                .filter_map(|s| s.as_str().map(str::to_string))
+                                .collect()
+                        });
+                    match ty {
+                        Some(ty) if !ty.is_empty() => {
+                            self.typed_value(cf, csym.parent, name, &ty, rest, rule)
+                                .map(|f| Found {
+                                    confidence: f.confidence.min(confidence),
+                                    ..f
+                                })
+                        }
+                        _ => Err(Miss::receiver(
+                            rule,
+                            format!(
+                                "`{name}` holds result {} of `{}`, which has no declared named type",
+                                index + 1,
+                                csym.qualified_name
+                            ),
+                        )),
+                    }
+                }
+            }
+            Ok(_) => Err(Miss::receiver(
+                rule,
+                format!("`{name}` holds the result of `{callee_text}`, defined outside the repository; its type is not known"),
+            )),
+            Err(miss) if miss.builtin => Err(Miss::receiver(
+                rule,
+                format!("`{name}` holds the result of builtin `{callee_text}`; its type is not tracked"),
+            )),
+            Err(miss) => Err(Miss::receiver(
+                rule,
+                format!(
+                    "`{name}` holds the result of `{callee_text}`, which is not resolved ({})",
+                    miss.reason
+                ),
+            )),
+        };
+        Some(res)
+    }
+
+    /// `rest` accessed on a value named `name` whose declared type is `ty`
+    /// (as written, resolved from `scope` of file `fi`). Statically typed
+    /// languages only.
+    pub(crate) fn typed_value(
+        &self,
+        fi: usize,
+        scope: Option<u32>,
+        name: &str,
+        ty: &[String],
+        rest: &[String],
+        rule: &'static str,
+    ) -> Res {
+        let family = self.files[fi].family;
+        let type_text = ty.join(".");
+        if rest.is_empty() {
+            return Err(Miss::receiver(
+                rule,
+                format!("`{name}` is a value of type `{type_text}`; calling it is not tracked"),
+            ));
+        }
+        let resolved = match self.lookup(fi, scope, ty) {
+            Ok(found) => found,
+            Err(miss) if miss.builtin => return Err(miss),
+            Err(miss) => {
+                return Err(Miss::receiver(
+                    rule,
+                    format!(
+                        "type `{type_text}` of `{name}` is not resolved ({})",
+                        miss.reason
+                    ),
+                ))
+            }
+        };
+        self.typed_member(family, resolved, name, &type_text, rest, rule)
+    }
+
+    /// `rest` accessed on a value named `name` of the already resolved type
+    /// `resolved`.
+    fn typed_member(
+        &self,
+        family: LanguageFamily,
+        resolved: Found,
+        name: &str,
+        type_text: &str,
+        rest: &[String],
+        rule: &'static str,
+    ) -> Res {
+        let (tf, tid) = match resolved.target {
+            Target::Symbol(tf, tid) if is_type_kind(self.sym((tf, tid)).kind) => (tf, tid),
+            Target::External(_) => return Ok(Found { rule, ..resolved }),
+            _ => {
+                return Err(Miss::receiver(
+                    rule,
+                    format!("`{type_text}` (type of `{name}`) is not a type"),
+                ))
+            }
+        };
+        let seg = rest[0].as_str();
+        let type_sym = self.sym((tf, tid));
+        let Some((m, inherited)) = self.member((tf, tid), seg, 0) else {
+            if family == LanguageFamily::Java {
+                if let Some(found) = self.java_external_base((tf, tid), 0) {
+                    return Ok(found);
+                }
+            }
+            return Err(Miss::new(
+                rule,
+                format!(
+                    "`{}` (type of `{name}`) has no member `{seg}`",
+                    type_sym.qualified_name
+                ),
+            ));
+        };
+        let confidence = match family {
+            LanguageFamily::Java => self.java_member_confidence(m, inherited),
+            // Go method sets are static; calls through interfaces and
+            // promoted members of embedded fields are not.
+            _ if inherited || type_sym.kind == SymbolKind::Interface => Confidence::Probable,
+            _ => Confidence::Confirmed,
+        };
+        let base = Found {
+            target: Target::Symbol(m.0, m.1),
+            confidence: confidence.min(resolved.confidence),
+            rule,
+        };
+        self.descend(base, &rest[1..])
     }
 
     /// Last resort for calls on receivers of unknown type: a method name
@@ -1062,6 +1478,8 @@ impl<'a> Resolver<'a> {
         }
         let imp = &self.files[fi].ir.imports[import];
         match self.files[fi].family {
+            LanguageFamily::Go => self.go_import(fi, import),
+            LanguageFamily::Java => self.java_import(fi, import),
             LanguageFamily::Ecmascript => {
                 let module = self.es_module(fi, &imp.module)?;
                 let Target::File(tf) = module.target else {

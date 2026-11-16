@@ -1375,6 +1375,7 @@ impl<'a> Es<'a> {
                 Target {
                     path: vec![text],
                     member: None,
+                    ..Default::default()
                 }
             }
             "member_expression" | "nested_identifier" => {
@@ -1383,7 +1384,11 @@ impl<'a> Es<'a> {
                 if path.iter().any(|s| s.is_empty()) {
                     return;
                 }
-                Target { path, member: None }
+                Target {
+                    path,
+                    member: None,
+                    ..Default::default()
+                }
             }
             _ => return,
         };
@@ -1575,7 +1580,11 @@ impl<'a> Es<'a> {
             }
         }
         if let Some(path) = self.dotted(expr) {
-            return Target { path, member: None };
+            return Target {
+                path,
+                member: None,
+                ..Default::default()
+            };
         }
         if expr.kind() == "member_expression" {
             let member = expr
@@ -1590,6 +1599,7 @@ impl<'a> Es<'a> {
             return Target {
                 path: Vec::new(),
                 member,
+                ..Default::default()
             };
         }
         Target::default()

@@ -61,7 +61,7 @@ fn info_reports_fingerprints() {
     assert!(out.status.success());
     let doc = &lines(&out)[0];
     assert_eq!(doc["ir_schema_version"], 1);
-    assert_eq!(doc["languages"].as_array().unwrap().len(), 4);
+    assert_eq!(doc["languages"].as_array().unwrap().len(), 6);
     assert!(doc["languages"][0]["fingerprint"]
         .as_str()
         .unwrap()

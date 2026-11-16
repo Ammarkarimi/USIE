@@ -51,10 +51,15 @@ the repository limit (headers are not trusted).
 
 Dependencies are read from `package.json` (all four dependency groups),
 `pyproject.toml` (PEP 621, dependency groups, Poetry), `requirements*.txt`,
-`go.mod`, `Cargo.toml` (local `path` crates excluded) and `pom.xml`.
-`tsconfig.json`/`jsconfig.json` (comments and trailing commas allowed)
-provide `baseUrl`/`paths`; `package.json` names and entry points define
-workspace packages. `setup.py` is recognised but never executed. Build
+`go.mod` (requirements, and the `module` path that maps Go import paths to
+directories), `Cargo.toml` (local `path` crates excluded), `pom.xml`, and
+`build.gradle`/`build.gradle.kts` (string-notation declarations such as
+`implementation 'group:artifact:version'` only; version catalogs, variables
+and `project(...)` dependencies are not seen because build scripts are code
+and are never executed). `tsconfig.json`/`jsconfig.json` (comments and
+trailing commas allowed) provide `baseUrl`/`paths`; `package.json` names and
+entry points define workspace packages. `setup.py` is recognised but never
+executed. Build
 systems detected: npm, python, go, cargo, maven, gradle, cmake, make,
 docker, meson, bazel, dotnet. Manifests that fail to parse are reported in
 the version statistics.

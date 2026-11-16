@@ -5,11 +5,13 @@ use proptest::prelude::*;
 use usie_ir::{FileIr, Language};
 use usie_parser::{parse, ParseOptions};
 
-const LANGUAGES: [Language; 4] = [
+const LANGUAGES: [Language; 6] = [
     Language::Python,
     Language::Javascript,
     Language::Typescript,
     Language::Tsx,
+    Language::Go,
+    Language::Java,
 ];
 
 fn check_invariants(ir: &FileIr, len: usize) {
@@ -28,6 +30,12 @@ fn check_invariants(ir: &FileIr, len: usize) {
             assert_eq!(
                 sym.qualified_name,
                 format!("{}.{}", parent.qualified_name, sym.name)
+            );
+        } else if let Some(receiver) = sym.attrs.get("receiver_type") {
+            // Go methods are declared at package level, qualified by receiver.
+            assert_eq!(
+                sym.qualified_name,
+                format!("{}.{}", receiver.as_str().unwrap(), sym.name)
             );
         } else {
             assert_eq!(sym.qualified_name, sym.name);
@@ -80,6 +88,15 @@ fn fragment() -> impl Strategy<Value = String> {
         Just("a.b.c(d)(e);".to_string()),
         Just("new X.Y();".to_string()),
         Just("super().m()\n".to_string()),
+        Just("package p\nimport (\n\tx \"a/b\"\n)\n".to_string()),
+        Just("func (r *T[K]) M(a, b int) (c error) { ".to_string()),
+        Just("type S struct { E; f *pkg.T `tag` }\n".to_string()),
+        Just("v := &T{F: g()}; for k, v := range m { ".to_string()),
+        Just("package a.b; import static a.B.*;".to_string()),
+        Just("public class C<T> extends B<T> implements I, J { ".to_string()),
+        Just("@Ann(x = 1) void m(final T t, int... r) throws E { ".to_string()),
+        Just("var x = new X<>() { void y() {} }; this.z().w(); super(a);".to_string()),
+        Just("enum E { A(1) { }, B; } record R(int a) { R { } }".to_string()),
         Just("=> {".to_string()),
         Just("}".to_string()),
         Just(")".to_string()),

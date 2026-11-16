@@ -20,9 +20,9 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Capability | Status | Notes |
 |---|---|---|
 | Repository ingestion | **implemented** | Git over HTTPS (branch, tag or commit), ZIP upload, server-local directories under allowed roots. Hashing, classification, encoding, generated/vendored detection, ignore files, manifests, build systems, commits and branches, incremental re-analysis with a parse cache. |
-| Parsing | **implemented** for Python, JavaScript, TypeScript, TSX | tree-sitter, time- and size-bounded, syntax errors reported as diagnostics. |
+| Parsing | **implemented** for Python, JavaScript, TypeScript, TSX, Go, Java | tree-sitter, time- and size-bounded, syntax errors reported as diagnostics. |
 | Language detection | **implemented** for Python, JavaScript, TypeScript, Java, C, C++, Rust, Go, C#, Kotlin and common formats | Languages without a parser are inventoried, not analyzed. |
-| Semantic resolution | **implemented** | Imports, exports, calls, instantiation, inheritance, JSX and decorator references across files, with confidence and provenance. [Specification](docs/specifications/semantic-resolution.md). |
+| Semantic resolution | **implemented** | Imports, exports, calls, instantiation, inheritance, JSX, decorator and annotation references across files, with confidence and provenance. Go: packages, `go.mod` modules, `vendor/`, methods across files, embedding. Java: fully qualified types, single/on-demand/static imports, inheritance. For Go and Java, calls also follow the declared types of variables, fields and call results. [Specification](docs/specifications/semantic-resolution.md). |
 | Knowledge graph | **implemented** | Immutable snapshot per version in PostgreSQL; search, bounded traversal with confidence filtering, file import graph, snapshot diff. |
 | Web interface | **implemented** | Overview, repositories, analysis results, version comparison, dependencies, history, code browser with symbols and resolved/unresolved references, graph explorer, jobs, workers, API tokens, audit log. Light and dark themes. |
 | REST API | **implemented** | [OpenAPI 3](services/api-gateway/openapi.yaml), typed TypeScript SDK in `packages/sdk`. |
@@ -30,11 +30,11 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Job orchestration | **implemented** | PostgreSQL queue with leases, heartbeats, retries, cancellation; horizontally scalable workers. |
 | Change impact | **experimental** | "Dependents" view: reverse reachability through calls, imports and inheritance. No risk scoring. |
 | Distributed execution | **experimental** | Several workers share one queue. No sandboxed build/test execution. |
-| Parsers for Java, C, C++, Rust, Go, C#, Kotlin | **planned** | |
+| Parsers for C#, Kotlin, Rust, C, C++ | **planned** | Next in that order. Files are detected and inventoried. |
 | AI reasoning | **experimental** | Ask questions about an analyzed version. Answers come from knowledge-graph evidence; every claim is shown as cited, inference or unsupported after the server checks its citations. Needs `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`); off otherwise. [Design](docs/adr/0009-ai-reasoning.md). |
 | Transformation, verification | **planned** | No code exists for these. |
 | Neo4j, Kafka, Temporal, Redis, Kubernetes | **planned / deferred** | See the [ADRs](docs/adr/README.md) for why each is not used yet. |
-| Type inference, data-flow analysis, dynamic imports with computed specifiers | **unsupported** | Calls through values of unknown type are reported unresolved, or matched heuristically and marked *inferred*. |
+| Type inference, data-flow analysis, dynamic imports with computed specifiers | **unsupported** | Only *declared* types are used (Go, Java); generic type arguments are not substituted. Calls through values of unknown type are reported unresolved, or matched heuristically and marked *inferred*. |
 
 ## Quick start
 
@@ -68,6 +68,20 @@ reported unresolved with a reason. These numbers come from the analysis
 statistics shown on the repository page; they vary by codebase and say
 nothing about other repositories.
 
+For Go and Java, measured with the engine's `analyze_dir` example on the
+same machine:
+
+| Corpus | Files | References | Resolved in repo | External | Builtin | Unresolved | Time |
+|---|---|---|---|---|---|---|---|
+| this repository's Go code | 49 | 4,912 | 29.7% | 48.4% | 10.4% | 11.4% | 0.16 s |
+| [google/gson](https://github.com/google/gson) (Java) | 268 | 30,092 | 43.1% | 34.1% | 7.8% | 14.9% | 0.66 s |
+
+In Gson, 89% of the unresolved references are calls on values returned by
+code outside the repository (for example `assertThat(x).isEqualTo(y)`), whose
+types USIE does not know and does not guess. A sample of resolved Java edges
+was checked by hand against the source; no wrong targets were found in it,
+which is evidence, not proof, of precision.
+
 Measured throughput of the engine on 3,000 Python files (4 vCPU, release
 build): 3.5 s to parse, 5.0 s to resolve.
 
@@ -76,7 +90,7 @@ build): 3.5 s to parse, 5.0 s to resolve.
 ```
 engines/                     Rust workspace
   intermediate-representation  normalized per-file IR
-  parser                       tree-sitter extraction (Python, JS/TS/TSX)
+  parser                       tree-sitter extraction (Python, JS/TS/TSX, Go, Java)
   semantic                     cross-file resolution
   cli                          usie-engine process (NDJSON protocol)
 services/                    Go services (one module)
@@ -102,11 +116,13 @@ make test   # everything below
 make lint   # rustfmt, clippy -D warnings, gofmt, go vet, golangci-lint
 ```
 
-- **Rust** (43 tests): extraction behaviour per language, property tests over
+- **Rust** (52 tests): extraction behaviour per language, property tests over
   arbitrary bytes and source-like text, resolver scenarios (packages, path
   aliases, workspaces, CommonJS, shadowing, inheritance, ambiguity, cycles,
-  determinism), and process-level tests of the engine protocol including
-  path-escape refusal.
+  determinism; Go modules, vendoring, build variants, embedding, interfaces;
+  Java imports, static imports, inheritance, typed locals and call chains),
+  and process-level tests of the engine protocol including path-escape
+  refusal.
 - **Go**: ingestion (classification, ignore rules, symlinks, limits, git URL
   and host validation, ZIP attacks, local-root confinement), a graph store
   conformance suite run against both implementations, engine contract tests,

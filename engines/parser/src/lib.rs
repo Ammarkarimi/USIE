@@ -10,6 +10,8 @@
 
 mod common;
 mod ecmascript;
+mod golang;
+mod java;
 mod python;
 
 pub use common::Limits;
@@ -64,6 +66,8 @@ pub fn parser_info(language: Language) -> ParserInfo {
         Language::Javascript => "tree-sitter-javascript@0.25",
         Language::Typescript => "tree-sitter-typescript@0.23",
         Language::Tsx => "tree-sitter-tsx@0.23",
+        Language::Go => "tree-sitter-go@0.25",
+        Language::Java => "tree-sitter-java@0.23",
     };
     ParserInfo {
         name: grammar.to_string(),
@@ -91,6 +95,8 @@ pub fn parse(
         Language::Javascript => tree_sitter_javascript::LANGUAGE.into(),
         Language::Typescript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         Language::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        Language::Go => tree_sitter_go::LANGUAGE.into(),
+        Language::Java => tree_sitter_java::LANGUAGE.into(),
     };
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -131,6 +137,8 @@ pub fn parse(
         Language::Javascript | Language::Typescript | Language::Tsx => {
             ecmascript::extract(root, source, language, options.limits)
         }
+        Language::Go => golang::extract(root, source, options.limits),
+        Language::Java => java::extract(root, source, options.limits),
     };
 
     Ok(FileIr {

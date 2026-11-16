@@ -43,15 +43,29 @@ pub enum Language {
     Javascript,
     Typescript,
     Tsx,
+    Go,
+    Java,
 }
 
 impl Language {
+    /// Every language the engine parses, in a stable order.
+    pub const ALL: [Language; 6] = [
+        Language::Python,
+        Language::Javascript,
+        Language::Typescript,
+        Language::Tsx,
+        Language::Go,
+        Language::Java,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Language::Python => "python",
             Language::Javascript => "javascript",
             Language::Typescript => "typescript",
             Language::Tsx => "tsx",
+            Language::Go => "go",
+            Language::Java => "java",
         }
     }
 
@@ -61,6 +75,8 @@ impl Language {
             "javascript" | "jsx" => Some(Language::Javascript),
             "typescript" => Some(Language::Typescript),
             "tsx" => Some(Language::Tsx),
+            "go" => Some(Language::Go),
+            "java" => Some(Language::Java),
             _ => None,
         }
     }
@@ -69,7 +85,11 @@ impl Language {
     pub fn family(&self) -> LanguageFamily {
         match self {
             Language::Python => LanguageFamily::Python,
-            _ => LanguageFamily::Ecmascript,
+            Language::Javascript | Language::Typescript | Language::Tsx => {
+                LanguageFamily::Ecmascript
+            }
+            Language::Go => LanguageFamily::Go,
+            Language::Java => LanguageFamily::Java,
         }
     }
 }
@@ -79,6 +99,8 @@ impl Language {
 pub enum LanguageFamily {
     Python,
     Ecmascript,
+    Go,
+    Java,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -272,6 +294,13 @@ pub struct Reference {
     /// is not a plain dotted name (e.g. `make().run()` has `member = "run"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member: Option<String>,
+    /// For statically typed languages, a target reached through calls
+    /// (`a.b().c()`), as steps: a name is a member access (the first names
+    /// are looked up in scope), `()` takes the result of calling what
+    /// precedes it, and `type:T` is a value of type `T` (`new T()`, casts,
+    /// composite literals). Empty when `path` describes the target.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chain: Vec<String>,
     /// Target source text, truncated.
     pub text: String,
     pub span: Span,
@@ -380,12 +409,7 @@ mod tests {
 
     #[test]
     fn language_round_trips() {
-        for l in [
-            Language::Python,
-            Language::Javascript,
-            Language::Typescript,
-            Language::Tsx,
-        ] {
+        for l in Language::ALL {
             assert_eq!(Language::parse(l.as_str()), Some(l));
         }
         assert_eq!(Language::parse("cobol"), None);

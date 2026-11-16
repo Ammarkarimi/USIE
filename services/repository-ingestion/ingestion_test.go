@@ -39,7 +39,7 @@ func TestDetectLanguage(t *testing.T) {
 			t.Errorf("DetectLanguage(%q) = %q, want %q", p, got, want)
 		}
 	}
-	for p, want := range map[string]string{"a.py": "python", "a.tsx": "tsx", "a.ts": "typescript", "a.d.ts": "typescript", "a.cjs": "javascript", "a.go": "", "a.java": ""} {
+	for p, want := range map[string]string{"a.py": "python", "a.tsx": "tsx", "a.ts": "typescript", "a.d.ts": "typescript", "a.cjs": "javascript", "a.go": "go", "A.java": "java", "a.rs": "", "a.kt": ""} {
 		if got := ParserLanguage(p); got != want {
 			t.Errorf("ParserLanguage(%q) = %q, want %q", p, got, want)
 		}
@@ -215,6 +215,8 @@ func TestManifests(t *testing.T) {
 	c.Add("go.mod", []byte("module x\n\ngo 1.22\n\nrequire github.com/a/b v1.2.3\nrequire (\n\tgithub.com/c/d v0.1.0 // indirect\n)\n"))
 	c.Add("Cargo.toml", []byte("[dependencies]\nserde = { version = \"1\", features = [\"derive\"] }\nlocal = { path = \"../local\" }\n[dev-dependencies]\nproptest = \"1\"\n"))
 	c.Add("pom.xml", []byte(`<project><dependencies><dependency><groupId>org.x</groupId><artifactId>y</artifactId><version>1.0</version><scope>test</scope></dependency></dependencies></project>`))
+	c.Add("svc/go.mod", []byte("module \"example.com/svc\" // the service\n"))
+	c.Add("app/build.gradle", []byte("dependencies {\n    implementation 'com.google.guava:guava:33.0.0-jre'\n    testImplementation(\"junit:junit:4.13.2\")\n    compileOnly \"org.projectlombok:lombok:1.18.30\"\n    implementation project(':core')\n    implementation libs.okhttp\n}\n"))
 	c.Add("broken/package.json", []byte(`{not json`))
 	c.Add("CMakeLists.txt", nil)
 	f := c.Facts()
@@ -228,6 +230,8 @@ func TestManifests(t *testing.T) {
 		"pypi:pytest:dev": "", "pypi:numpy:runtime": ">=1.20", "pypi:matplotlib:optional": "", "pypi:pydantic:runtime": "^2",
 		"go:github.com/a/b:runtime": "v1.2.3", "go:github.com/c/d:runtime": "v0.1.0", "cargo:serde:runtime": "1",
 		"cargo:proptest:dev": "1", "maven:org.x:y:dev": "1.0",
+		"maven:com.google.guava:guava:runtime": "33.0.0-jre", "maven:junit:junit:dev": "4.13.2",
+		"maven:org.projectlombok:lombok:build": "1.18.30",
 	}
 	for k, v := range want {
 		if g, ok := got[k]; !ok || g != v {
@@ -237,7 +241,10 @@ func TestManifests(t *testing.T) {
 	if len(got) != len(want) {
 		t.Errorf("dependency count %d: %v", len(got), got)
 	}
-	if strings.Join(f.BuildSystems, ",") != "cargo,cmake,go,maven,npm,python" {
+	if len(f.GoModules) != 2 || f.GoModules[0] != (GoModule{Dir: "", Path: "x"}) || f.GoModules[1] != (GoModule{Dir: "svc", Path: "example.com/svc"}) {
+		t.Errorf("go modules: %+v", f.GoModules)
+	}
+	if strings.Join(f.BuildSystems, ",") != "cargo,cmake,go,gradle,maven,npm,python" {
 		t.Errorf("build systems: %v", f.BuildSystems)
 	}
 	if len(f.TsConfigs) != 1 || f.TsConfigs[0].Dir != "web" || *f.TsConfigs[0].BaseURL != "." || f.TsConfigs[0].Paths["@/*"][0] != "src/*" {
