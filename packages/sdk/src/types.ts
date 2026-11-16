@@ -426,3 +426,113 @@ export interface Impact {
   truncated: boolean;
   limitations: string[];
 }
+
+// ---- AI code changes and verification ----
+
+export type ChangeStatus = "pending" | "proposed" | "declined" | "failed" | "discarded";
+
+export interface ChangeEdit {
+  path: string;
+  action: "modify" | "create" | "delete";
+  search: string;
+  replace: string;
+  reason: string;
+}
+
+export interface CodeChange {
+  id: string;
+  repository_id: string;
+  version_id: string;
+  request: string;
+  focus_key: string;
+  status: ChangeStatus;
+  summary: string;
+  rationale: string;
+  risks: string[];
+  test_plan: string[];
+  limitations: string[];
+  edits: ChangeEdit[];
+  diff: string;
+  files_changed: number;
+  lines_added: number;
+  lines_removed: number;
+  /** Change impact of the diff; empty object until proposed. */
+  impact: Partial<Impact>;
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  latency_ms: number;
+  error: string;
+  created_by: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface VerificationProfile {
+  id: string;
+  label: string;
+  description: string;
+  requires: string[];
+  steps: { name: string; argv: string[]; tests: boolean }[];
+  detected: boolean;
+  available: boolean;
+  reason?: string;
+}
+
+export interface TestSummary {
+  passed: number;
+  failed: number;
+  skipped: number;
+  failing?: string[];
+}
+
+export interface StepResult {
+  name: string;
+  argv: string[];
+  exit_code: number;
+  timed_out: boolean;
+  duration_seconds: number;
+  output: string;
+  output_clipped: boolean;
+  tests?: TestSummary | null;
+}
+
+export interface TreeResult {
+  steps: StepResult[];
+  passed: boolean;
+  skipped?: string[];
+}
+
+export type VerificationStatus = "queued" | "running" | "passed" | "failed" | "error" | "cancelled";
+
+export interface VerificationRun {
+  id: string;
+  change_id: string;
+  version_id: string;
+  profile: string;
+  baseline: boolean;
+  status: VerificationStatus;
+  result: {
+    sandbox?: string;
+    network?: boolean;
+    missing_files?: number;
+    baseline?: TreeResult | null;
+    change?: TreeResult | null;
+    newly_failing?: string[] | null;
+    fixed?: string[] | null;
+    notes?: string[];
+  };
+  error: string;
+  created_by: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface SandboxCapability {
+  sandbox: string;
+  network: boolean;
+  programs: string[];
+}

@@ -28,11 +28,11 @@ RUN go build -trimpath -ldflags "-s -w -X github.com/ammarkarimi/usie/internal/p
       -o /out/ ./services/api-gateway/cmd/usie-api ./services/execution-orchestrator/cmd/usie-worker
 
 FROM debian:bookworm-slim AS runtime
-# git is needed by the worker to clone repositories; nothing else is installed.
+# git is needed by the worker to clone repositories. bubblewrap and
+# util-linux (prlimit) back the verification sandbox, which is off unless
+# USIE_SANDBOX=bubblewrap; python3 lets the Python profiles run. Other
+# toolchains are not installed (see docs/operations/verification.md).
 RUN apt-get update \
-# bubblewrap and util-linux (prlimit) back the verification sandbox; it is
-# off unless USIE_SANDBOX=bubblewrap. python3 lets the Python profiles run;
-# other toolchains are not installed (see docs/operations/verification.md).
  && apt-get install -y --no-install-recommends ca-certificates git bubblewrap util-linux python3 \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --home-dir /var/lib/usie --create-home usie

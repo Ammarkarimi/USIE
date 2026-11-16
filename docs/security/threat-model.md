@@ -22,13 +22,16 @@ API tokens), and the integrity of the hosts running USIE.
 | Prompt injection through repository content | Evidence is framed as untrusted data inside a random per-request boundary; item delimiters in content are neutralized; the system prompt says not to follow instructions in evidence; the model has **no tools** and its output is only displayed; citations are checked server-side and unbacked claims are marked unsupported; answers are rendered as text, never HTML. | `services/ai-reasoning`, ADR 0009 |
 | Source code sent to a third party | AI is off unless a provider key is configured; OpenAI requests are sent with `store: false`; the interface states what is sent and to whom before every question; only the asking organization's evidence is sent. | `ai/status`, Ask page |
 | AI cost abuse | Per-organization daily token budget, per-user hourly limit, bounded concurrency and evidence size; viewers cannot ask; questions are audited (length only, not text). | `services/ai-reasoning` |
+| AI-proposed code does harm | Proposals are only text: edits are applied in memory to stored sources and kept as a diff; nothing is written to the repository or executed by the API. Edits may only touch files the model was shown in full, must match exactly once, use clean repository paths (never `.git/`), and are size- and count-limited; one invalid edit rejects the proposal. The interface labels every proposal unverified until a sandbox run passes, and renders diffs as text. | `services/transformation`, ADR 0011 |
+| Repository or AI code executed during verification | Never in the API or worker process: commands run in a bubblewrap sandbox on a worker with new user/PID/IPC/UTS/network namespaces (no network unless the operator enables it), all capabilities dropped, UID 65534, a cleared environment (no database URL, keys or tokens), `/usr` read-only, only the job's work tree and a tmpfs writable, and CPU, memory, file-size, process, wall-clock and output limits; the process group is killed on timeout. Commands are fixed per profile, never user-supplied. Verification is off unless an operator sets `USIE_SANDBOX=bubblewrap`; the sandbox self-tests at worker start. Tests check that secrets, host files and the network are unreachable. | `services/verification`, ADR 0011 |
 | Information leakage in errors | Internal errors return a generic message and request id; details only in logs. | `writeError` |
 
 ## Known gaps (not implemented)
 
 - OS-level sandboxing of the engine and git (seccomp, user namespaces,
   network-less execution). Container limits are applied in the compose file
-  only.
+  only. (Verification runs, which execute repository code, are sandboxed;
+  parsing never executes code.)
 - DNS rebinding between the host check and git's own resolution; restrict
   worker egress at the network layer for a hard guarantee.
 - Private repository credentials (the API accepts public HTTPS URLs only).
@@ -46,3 +49,17 @@ API tokens), and the integrity of the hosts running USIE.
   which code the model looked at, not that its reading is correct.
 - Evidence and answers are stored in the database for audit; deleting a
   conversation deletes them.
+
+### Verification residual risks
+
+- The sandbox shares the host kernel: a kernel vulnerability reachable from
+  an unprivileged user namespace could escape it. Run workers that verify
+  changes on hosts dedicated to USIE, and keep the kernel patched. No
+  seccomp filter is applied yet.
+- `RLIMIT_NPROC` counts processes per host user and is not enforced when
+  the worker runs as root; the image runs it as an unprivileged user.
+- With `USIE_SANDBOX_NETWORK=true`, sandboxed code can send what it reads
+  (the repository) anywhere and reach internal services; leave it off unless
+  dependencies must be downloaded and the network is otherwise restricted.
+- Toolchains on the worker host are visible read-only inside the sandbox;
+  their configuration files under `/usr` are readable by tested code.

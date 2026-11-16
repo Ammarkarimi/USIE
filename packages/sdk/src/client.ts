@@ -1,5 +1,5 @@
 import type {
-  AIConversation, AIStatus, ApiToken, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, FileDetail, GraphDiff, GraphNode, Impact, ImpactRequest,
+  AIConversation, AIStatus, ApiToken, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, CodeChange, FileDetail, GraphDiff, GraphNode, Impact, ImpactRequest, SandboxCapability, VerificationProfile, VerificationRun,
   GraphStats, Job, JobStatus, Reference, Repository, Session, SourceFile, SourceKind, Subgraph, SystemInfo, Version,
   Worker, Workspace,
 } from "./types";
@@ -171,6 +171,22 @@ export class UsieClient {
   askFollowup = (conversationId: string, input: { question: string; focus_key?: string }) =>
     this.request<AIConversation>("POST", `/ai/conversations/${conversationId}/messages`, { body: input });
   deleteConversation = (id: string) => this.request<void>("DELETE", `/ai/conversations/${id}`);
+
+  // ---- AI code changes and verification ----
+  listChanges = (q: { repository_id?: string; limit?: number } = {}) =>
+    this.request<{ changes: CodeChange[] }>("GET", "/changes", { query: q }).then((r) => r.changes);
+  /** Starts a proposal; it is pending until polled again. */
+  proposeChange = (input: { version_id: string; request: string; focus_key?: string }) =>
+    this.request<CodeChange>("POST", "/changes", { body: input });
+  getChange = (id: string) => this.request<{ change: CodeChange; verifications: VerificationRun[] }>("GET", `/changes/${id}`);
+  discardChange = (id: string) => this.request<CodeChange>("POST", `/changes/${id}/discard`);
+  /** URL of the proposal's patch file (same-origin, uses the session). */
+  changePatchURL = (id: string) => `${this.baseUrl}/changes/${id}/patch`;
+  verificationProfiles = (changeId: string) =>
+    this.request<{ sandbox: SandboxCapability | null; profiles: VerificationProfile[] }>("GET", `/changes/${changeId}/verification-profiles`);
+  verify = (changeId: string, input: { profile: string; baseline?: boolean }) =>
+    this.request<VerificationRun>("POST", `/changes/${changeId}/verifications`, { body: input });
+  getVerification = (id: string) => this.request<VerificationRun>("GET", `/verifications/${id}`);
 
   /**
    * Follow a job's state as Server-Sent Events (browser session only).

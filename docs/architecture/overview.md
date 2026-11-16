@@ -44,6 +44,8 @@ and are not part of the running system.
 | Pipeline | `internal/pipeline` | The `analyze_version` job. |
 | AI reasoning | `services/ai-reasoning` | Evidence retrieval from the graph and source, provider interface (OpenAI by default, Claude as an alternative), citation validation, conversations, budgets ([ADR 0009](../adr/0009-ai-reasoning.md)). |
 | Change impact | `services/change-impact` | Diff parsing, line diff of versions, mapping changes to declarations, reverse traversal, test reachability, risk score ([ADR 0010](../adr/0010-change-impact.md)). |
+| Transformation | `services/transformation` | AI change proposals: editable files, strict output schema, edit validation and application, diff, impact ([ADR 0011](../adr/0011-changes-and-verification.md)). |
+| Verification | `services/verification` | Bubblewrap sandbox, fixed build-and-test profiles, test-output parsing, `verify_change` job handler. |
 | API gateway | `services/api-gateway` | HTTP API (`openapi.yaml`), `usie-api` binary. |
 | Data access | `internal/store`, `database/` | Tenant-scoped queries; embedded forward-only migrations. |
 | Web | `apps/web`, `packages/sdk`, `packages/design-system` | React application, typed client, shared components and tokens. |
@@ -103,7 +105,6 @@ backend is planned ([ADR 0004](../adr/0004-blob-storage.md)).
 These appear in the product specification and are **planned**; there is no
 code for them beyond what is listed:
 
-- Transformation and verification (sandboxed builds and tests).
 - Neo4j projection, Kafka, Temporal, Redis, Kubernetes manifests,
   OpenTelemetry tracing (metrics and structured logs exist).
 - Membership management API (memberships exist in the schema).

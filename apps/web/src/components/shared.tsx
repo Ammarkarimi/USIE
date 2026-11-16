@@ -58,7 +58,7 @@ export function sourceLabel(r: Repository): string {
   }
 }
 
-export function RepoLinks({ repoId, versionId, active }: { repoId: string; versionId?: string; active: "overview" | "code" | "graph" | "impact" | "ask" }) {
+export function RepoLinks({ repoId, versionId, active }: { repoId: string; versionId?: string; active: "overview" | "code" | "graph" | "impact" | "changes" | "ask" }) {
   const q = versionId ? `?version=${versionId}` : "";
   const item = (key: typeof active, to: string, label: string) => (
     <Link to={to} className={key === active ? "rounded-md bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent" : "rounded-md px-3 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-fg"}>
@@ -72,6 +72,7 @@ export function RepoLinks({ repoId, versionId, active }: { repoId: string; versi
       {item("graph", `/repositories/${repoId}/graph${q}`, "Knowledge graph")}
       {item("impact", `/repositories/${repoId}/impact${q}`, "Impact")}
       {item("ask", `/repositories/${repoId}/ask${q}`, "Ask")}
+      {item("changes", `/repositories/${repoId}/changes${q}`, "Changes")}
     </nav>
   );
 }

@@ -29,9 +29,10 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Security baseline | **implemented** | Sessions + CSRF, API tokens, organization isolation, RBAC, rate limits, audit log, hardened git, untrusted-input handling. [Security model](docs/security/threat-model.md). |
 | Job orchestration | **implemented** | PostgreSQL queue with leases, heartbeats, retries, cancellation; horizontally scalable workers. |
 | Change impact | **implemented** | For node keys, files, a unified diff or a comparison of two analyzed versions: the declarations the change touches, every dependent reached backwards through resolved relationships (with path and weakest-link confidence), the tests that reach the change, and a 0–100 risk score whose six weighted factors are each shown and explained. Reachability through resolved relationships, not measured coverage. [Design](docs/adr/0010-change-impact.md). |
-| Distributed execution | **experimental** | Several workers share one queue. No sandboxed build/test execution. |
+| Distributed execution | **implemented** | Several workers share one PostgreSQL queue (leases, heartbeats, retries, cancellation) for analysis and verification jobs; verification runs in a sandbox. |
 | AI reasoning | **experimental** | Ask questions about an analyzed version. Answers come from knowledge-graph evidence; every claim is shown as cited, inference or unsupported after the server checks its citations. Needs `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`); off otherwise. [Design](docs/adr/0009-ai-reasoning.md). |
-| Transformation, verification | **planned** | No code exists for these. |
+| AI code changes | **experimental** | A model proposes search-and-replace edits for files it was shown in full; the server validates and applies them, renders the diff and its change impact. Never written to the repository (download a patch); labelled unverified until a verification run passes. Needs an AI provider. [Design](docs/adr/0011-changes-and-verification.md). |
+| Verification | **experimental** | Fixed build-and-test profiles (Go, Cargo, pytest/unittest, npm, Maven, Gradle, .NET, make) run on a worker in a bubblewrap sandbox: no network by default, no credentials, unprivileged, resource-limited; compared against the unchanged version. Off unless `USIE_SANDBOX=bubblewrap`; profiles need their toolchain on the worker (the image includes Python only). |
 | Neo4j, Kafka, Temporal, Redis, Kubernetes | **planned / deferred** | See the [ADRs](docs/adr/README.md) for why each is not used yet. |
 | Type inference, data-flow analysis, dynamic imports with computed specifiers | **unsupported** | Only *declared* types are used (Go, Java); generic type arguments are not substituted. Calls through values of unknown type are reported unresolved, or matched heuristically and marked *inferred*. |
 
@@ -111,6 +112,9 @@ services/                    Go services (one module)
   semantic-analysis            engine client
   knowledge-graph              graph Store: PostgreSQL + in-memory
   execution-orchestrator       job queue, worker loop, usie-worker
+  change-impact                diff mapping, dependents, tests, risk score
+  transformation               AI change proposals: edits, validation, diff
+  verification                 sandboxed build-and-test profiles (bubblewrap)
 internal/                    pipeline, data access, platform packages
 database/migrations          SQL schema
 apps/web                     React + TypeScript web application

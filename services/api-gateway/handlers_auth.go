@@ -31,9 +31,9 @@ var features = []map[string]string{
 	{"id": "knowledge-graph", "status": "implemented", "detail": "Versioned snapshots in PostgreSQL with search, bounded traversal and snapshot diff."},
 	{"id": "change-impact", "status": "implemented", "detail": "Changed declarations from symbols, files, a unified diff or two analyzed versions; dependents through resolved relationships; tests that reach the change; an explained risk score. Not measured coverage."},
 	{"id": "ai-reasoning", "status": "experimental", "detail": "Questions about an analyzed version are answered from knowledge-graph evidence; every claim is checked against the evidence it cites. Requires an AI provider to be configured."},
-	{"id": "transformation", "status": "planned", "detail": "Not implemented."},
-	{"id": "verification", "status": "planned", "detail": "Not implemented."},
-	{"id": "distributed-execution", "status": "experimental", "detail": "Multiple workers share a PostgreSQL job queue with leases and retries. No sandboxed build or test execution."},
+	{"id": "transformation", "status": "experimental", "detail": "An AI model proposes edits that the server validates and applies to the analyzed sources, producing a diff and its change impact. Nothing is written to the repository; proposals are unverified until a verification run passes. Requires an AI provider."},
+	{"id": "verification", "status": "experimental", "detail": "Fixed build-and-test profiles run on workers in a bubblewrap sandbox without network or credentials, compared with the unchanged version. Requires USIE_SANDBOX=bubblewrap on a worker and the profile's toolchain."},
+	{"id": "distributed-execution", "status": "implemented", "detail": "Multiple workers share a PostgreSQL job queue with leases, heartbeats, retries and cancellation, for analysis and verification jobs."},
 }
 
 func (s *Server) getSystem(w http.ResponseWriter, r *http.Request, _ *store.Principal) error {

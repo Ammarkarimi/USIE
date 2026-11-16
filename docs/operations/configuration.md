@@ -35,4 +35,10 @@ values stop the process at startup with a message naming the variable.
 | `USIE_AI_EFFORT` | `medium` | Reasoning effort: `low`, `medium`, `high`, `xhigh` or `max` (OpenAI also accepts `none` and `minimal` where the model does). `off` sends none, for models without reasoning. Higher costs more and takes longer. |
 | `USIE_AI_DAILY_TOKEN_BUDGET` | `2000000` | Tokens per organization per UTC day (input, output and cache reads). |
 | `USIE_AI_USER_REQUESTS_PER_HOUR` | `30` | Questions per user per hour. |
-| `USIE_AI_MAX_CONCURRENT` | `4` | Answers generated at the same time by one API process. |
+| `USIE_AI_MAX_CONCURRENT` | `4` | Answers (and, separately, change proposals) generated at the same time by one API process. |
+| `USIE_AI_CHANGES_PER_HOUR` | `10` | AI change proposals per user per hour. Proposals share the daily token budget with answers. |
+| `USIE_SANDBOX` | `none` | Workers: `bubblewrap` enables verification runs (needs `bwrap` and `prlimit`, and unprivileged user namespaces). `none` disables them. |
+| `USIE_SANDBOX_NETWORK` | `false` | Workers: let sandboxed builds reach the network. Off means no dependency downloads and no way for tested code to send data out. |
+| `USIE_SANDBOX_TIMEOUT` | `10m` | Workers: wall-clock limit of one sandboxed command. |
+| `USIE_SANDBOX_MEMORY_BYTES` | `8589934592` | Workers: address-space limit of one sandboxed command (runtimes such as Go and the JVM reserve large virtual ranges). |
+| `USIE_SANDBOX_READONLY_PATHS` | — | Workers: colon-separated absolute paths of toolchains outside `/usr` (e.g. `/opt/go`) to mount read-only; their `bin` directories are added to `PATH`. |

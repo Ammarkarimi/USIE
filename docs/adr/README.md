@@ -12,3 +12,4 @@
 | [0008](0008-authentication.md) | Sessions with CSRF tokens, API tokens, organization-scoped RBAC | accepted |
 | [0009](0009-ai-reasoning.md) | Grounded AI answers: evidence retrieval, validated citations, no model tools | accepted |
 | [0010](0010-change-impact.md) | Change impact from the knowledge graph, with an explained score | accepted |
+| [0011](0011-changes-and-verification.md) | AI-proposed changes as validated diffs; verification in a bubblewrap sandbox | accepted |
