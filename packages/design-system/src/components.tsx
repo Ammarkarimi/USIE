@@ -142,7 +142,7 @@ const statusTone: Record<string, Tone> = {
   analyzing: "info", running: "info", busy: "info", experimental: "info",
   pending: "neutral", queued: "neutral", idle: "neutral", unsupported: "neutral", skipped: "neutral", planned: "neutral",
   failed: "danger", parsed_with_errors: "warn", cancelled: "warn", stopped: "neutral", offline: "warn",
-  passed: "ok", error: "danger", unverified: "warn", declined: "neutral", discarded: "neutral",
+  passed: "ok", error: "danger", unverified: "warn", declined: "neutral", discarded: "neutral", open: "info", accepted: "ok", revoked: "neutral", expired: "warn",
 };
 
 export function StatusBadge({ status }: { status: string }) {

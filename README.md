@@ -24,8 +24,9 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Language detection | **implemented** for the languages above and common formats | Formats without a parser (shell, SQL, YAML, …) are inventoried, not analyzed. |
 | Semantic resolution | **implemented** | Imports, exports, calls, instantiation, inheritance, JSX, decorator and annotation references across files, with confidence and provenance. Go: packages, `go.mod` modules, `vendor/`, methods across files, embedding. Java, Kotlin, C#: fully qualified types, imports and usings, inheritance, partial types, extension methods. Rust: crates, module tree, `use`, `impl` blocks, traits. C/C++: `#include` resolution, declarations vs definitions, namespaces, out-of-class methods. For the statically typed languages, calls also follow the declared types of variables, fields and call results. [Specification](docs/specifications/semantic-resolution.md). |
 | Knowledge graph | **implemented** | Immutable snapshot per version in PostgreSQL; search, bounded traversal with confidence filtering, file import graph, snapshot diff. |
-| Web interface | **implemented** | Overview, repositories, analysis results, version comparison, dependencies, history, code browser with symbols and resolved/unresolved references, graph explorer, jobs, workers, API tokens, audit log. Light and dark themes. |
+| Web interface | **implemented** | Overview, repositories, analysis results, version comparison, dependencies, history, code browser with symbols and resolved/unresolved references, graph explorer, change impact, AI questions and changes, jobs, workers, team and account settings, API tokens, audit log. Light and dark themes. |
 | REST API | **implemented** | [OpenAPI 3](services/api-gateway/openapi.yaml), typed TypeScript SDK in `packages/sdk`. |
+| Team management | **implemented** | Invite people by email address with a role; change roles and remove members (admins manage up to admin, only owners manage owners, the last owner is protected); leave an organization; switch between organizations; change password; password reset links. Links are emailed when SMTP is configured (`USIE_SMTP_*`); otherwise the inviting administrator gets the link once to share. [Design](docs/adr/0012-team-management.md). |
 | Security baseline | **implemented** | Sessions + CSRF, API tokens, organization isolation, RBAC, rate limits, audit log, hardened git, untrusted-input handling. [Security model](docs/security/threat-model.md). |
 | Job orchestration | **implemented** | PostgreSQL queue with leases, heartbeats, retries, cancellation; horizontally scalable workers. |
 | Change impact | **implemented** | For node keys, files, a unified diff or a comparison of two analyzed versions: the declarations the change touches, every dependent reached backwards through resolved relationships (with path and weakest-link confidence), the tests that reach the change, and a 0–100 risk score whose six weighted factors are each shown and explained. Reachability through resolved relationships, not measured coverage. [Design](docs/adr/0010-change-impact.md). |
@@ -147,7 +148,7 @@ make lint   # rustfmt, clippy -D warnings, gofmt, go vet, golangci-lint
   conformance suite run against both implementations, engine contract tests,
   pipeline integration tests (incremental re-analysis, uploads, hostile
   archives, cancellation), and API tests (authentication, CSRF, tokens, roles,
-  tenant isolation, full analysis through the API, OpenAPI coverage). Each
+  tenant isolation, invitations, role rules, password resets, email delivery, full analysis through the API, OpenAPI coverage). Each
   integration test gets its own PostgreSQL database.
 - **TypeScript**: SDK, design system and application tests.
 

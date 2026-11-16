@@ -48,6 +48,7 @@ and are not part of the running system.
 | Verification | `services/verification` | Bubblewrap sandbox, fixed build-and-test profiles, test-output parsing, `verify_change` job handler. |
 | API gateway | `services/api-gateway` | HTTP API (`openapi.yaml`), `usie-api` binary. |
 | Data access | `internal/store`, `database/` | Tenant-scoped queries; embedded forward-only migrations. |
+| Team management | `internal/store/team.go`, `internal/platform/mail`, `services/api-gateway/handlers_team.go` | Members and role rules, invitations, password resets, organization switching; optional SMTP delivery ([ADR 0012](../adr/0012-team-management.md)). |
 | Web | `apps/web`, `packages/sdk`, `packages/design-system` | React application, typed client, shared components and tokens. |
 
 ## The analysis of one version

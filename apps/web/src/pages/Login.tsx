@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button, ErrorBanner, Field, Input } from "@usie/design-system";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -64,6 +64,11 @@ export function Login() {
         <Button type="submit" variant="primary" className="w-full" busy={busy}>
           {registering ? "Create account" : "Sign in"}
         </Button>
+        {!registering && (
+          <Link to="/forgot-password" className="block w-full text-center text-sm text-accent hover:underline">
+            Forgot password?
+          </Link>
+        )}
         {signupAllowed && (
           <button type="button" className="w-full text-center text-sm text-accent hover:underline" onClick={() => setMode(registering ? "login" : "register")}>
             {registering ? "I already have an account" : "Create an account"}

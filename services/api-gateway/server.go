@@ -28,6 +28,7 @@ import (
 	"github.com/ammarkarimi/usie/internal/platform/authn"
 	"github.com/ammarkarimi/usie/internal/platform/blob"
 	"github.com/ammarkarimi/usie/internal/platform/config"
+	"github.com/ammarkarimi/usie/internal/platform/mail"
 	"github.com/ammarkarimi/usie/internal/store"
 	ai "github.com/ammarkarimi/usie/services/ai-reasoning"
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
@@ -58,6 +59,8 @@ type Server struct {
 	AI *ai.Service
 	// Changes produces AI-proposed code changes; nil disables the feature.
 	Changes *transform.Service
+	// Mail sends invitation and reset emails; nil when email is not configured.
+	Mail mail.Sender
 	// WebDir, when set, is served as the single-page application.
 	WebDir string
 

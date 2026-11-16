@@ -60,6 +60,15 @@ type Config struct {
 	// AIChangesPerHour caps AI change proposals per user.
 	AIChangesPerHour int
 
+	// PublicURL is the address users open USIE at; links in emails use it.
+	PublicURL string
+	// SMTP settings for invitation and password-reset emails. Email is
+	// enabled when SMTPAddr, SMTPFrom and PublicURL are set.
+	SMTPAddr     string
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+
 	// Sandbox is the verification sandbox: "none" (verification disabled)
 	// or "bubblewrap". It runs repository builds and tests.
 	Sandbox string
@@ -77,6 +86,11 @@ type Config struct {
 	// that append to X-Forwarded-For (counting the one that connects). 0
 	// ignores forwarding headers and uses the peer address.
 	TrustedProxyHops int
+}
+
+// EmailEnabled reports whether invitation and reset emails can be sent.
+func (c Config) EmailEnabled() bool {
+	return c.SMTPAddr != "" && c.SMTPFrom != "" && c.PublicURL != ""
 }
 
 func Load() (Config, error) {
@@ -167,6 +181,14 @@ func Load() (Config, error) {
 	c.AIUserRequestsPerHour = int(integer("USIE_AI_USER_REQUESTS_PER_HOUR", 30))
 	c.AIMaxConcurrent = int(integer("USIE_AI_MAX_CONCURRENT", 4))
 	c.AIChangesPerHour = int(integer("USIE_AI_CHANGES_PER_HOUR", 10))
+	c.PublicURL = strings.TrimRight(os.Getenv("USIE_PUBLIC_URL"), "/")
+	if c.PublicURL != "" && !strings.HasPrefix(c.PublicURL, "https://") && !strings.HasPrefix(c.PublicURL, "http://") {
+		fail("USIE_PUBLIC_URL", fmt.Errorf("must start with https:// or http://"))
+	}
+	c.SMTPAddr = os.Getenv("USIE_SMTP_ADDR")
+	c.SMTPUsername = os.Getenv("USIE_SMTP_USERNAME")
+	c.SMTPPassword = os.Getenv("USIE_SMTP_PASSWORD")
+	c.SMTPFrom = os.Getenv("USIE_SMTP_FROM")
 	c.Sandbox = env("USIE_SANDBOX", "none")
 	c.SandboxNetwork = boolean("USIE_SANDBOX_NETWORK", false)
 	c.SandboxTimeout = duration("USIE_SANDBOX_TIMEOUT", 10*time.Minute)

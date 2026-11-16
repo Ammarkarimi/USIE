@@ -24,6 +24,8 @@ API tokens), and the integrity of the hosts running USIE.
 | AI cost abuse | Per-organization daily token budget, per-user hourly limit, bounded concurrency and evidence size; viewers cannot ask; questions are audited (length only, not text). | `services/ai-reasoning` |
 | AI-proposed code does harm | Proposals are only text: edits are applied in memory to stored sources and kept as a diff; nothing is written to the repository or executed by the API. Edits may only touch files the model was shown in full, must match exactly once, use clean repository paths (never `.git/`), and are size- and count-limited; one invalid edit rejects the proposal. The interface labels every proposal unverified until a sandbox run passes, and renders diffs as text. | `services/transformation`, ADR 0011 |
 | Repository or AI code executed during verification | Never in the API or worker process: commands run in a bubblewrap sandbox on a worker with new user/PID/IPC/UTS/network namespaces (no network unless the operator enables it), all capabilities dropped, UID 65534, a cleared environment (no database URL, keys or tokens), `/usr` read-only, only the job's work tree and a tmpfs writable, and CPU, memory, file-size, process, wall-clock and output limits; the process group is killed on timeout. Commands are fixed per profile, never user-supplied. Verification is off unless an operator sets `USIE_SANDBOX=bubblewrap`; the sandbox self-tests at worker start. Tests check that secrets, host files and the network are unreachable. | `services/verification`, ADR 0011 |
+| Account takeover through invitations or resets | Invitation and reset tokens are 256-bit random, stored only as SHA-256, single use, short-lived (invitations 7 days, emailed resets 1 hour, administrator-issued resets 24 hours), and carried in the URL fragment so they never reach server logs or `Referer` headers; the page removes them from the address bar. Accepting an invitation for an address that already has an account requires that account's password. Administrators can issue reset links only for people who belong to no other organization, so an administrator cannot take over an account that also belongs elsewhere. A reset or password change ends the user's other sessions; removal from an organization ends the member's sessions there and revokes their tokens for it. Reset requests answer the same whether or not an address has an account and send email in the background. Role changes follow fixed rules enforced in one transaction with row locks: nobody changes their own role, only owners grant or change the owner role, the last owner can be neither demoted nor removed. | `internal/store/team.go`, `handlers_team.go`, ADR 0012 |
+| Email header injection | Recipients, subjects and the sender are rejected if they contain line breaks; subjects are Q-encoded; credentials are sent only over STARTTLS. | `internal/platform/mail` |
 | Information leakage in errors | Internal errors return a generic message and request id; details only in logs. | `writeError` |
 
 ## Known gaps (not implemented)
@@ -37,7 +39,8 @@ API tokens), and the integrity of the hosts running USIE.
 - Private repository credentials (the API accepts public HTTPS URLs only).
 - PostgreSQL row-level security as a second isolation layer.
 - Encryption of blobs at rest beyond what the storage provides.
-- SSO, MFA, account lockout, password reset.
+- SSO, MFA, account lockout (logins and password attempts are rate-limited
+  per IP and per account, not locked).
 
 ### AI-specific residual risks
 

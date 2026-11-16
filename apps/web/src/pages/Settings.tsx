@@ -6,13 +6,19 @@ import { useAuth, useCan } from "../auth";
 import { useAsync } from "../hooks";
 import { PageHeader } from "../App";
 import { useDocumentTitle } from "../components/shared";
+import { useSearchParams } from "react-router-dom";
+import { Account, Team } from "./Team";
 
-type Tab = "capabilities" | "tokens" | "audit";
+type Tab = "capabilities" | "team" | "account" | "tokens" | "audit";
+const TABS: Tab[] = ["capabilities", "team", "account", "tokens", "audit"];
 
 export function Settings() {
   useDocumentTitle("Settings");
   const isAdmin = useCan("admin");
-  const [tab, setTab] = useState<Tab>("capabilities");
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("tab") as Tab | null;
+  const tab: Tab = requested && TABS.includes(requested) ? requested : "capabilities";
+  const setTab = (t: Tab) => setParams(t === "capabilities" ? {} : { tab: t }, { replace: true });
   return (
     <>
       <PageHeader title="Settings" />
@@ -22,11 +28,15 @@ export function Settings() {
           onChange={setTab}
           items={[
             { value: "capabilities", label: "Capabilities" },
+            { value: "team", label: "Team" },
+            { value: "account", label: "Account" },
             { value: "tokens", label: "API tokens" },
             ...(isAdmin ? [{ value: "audit" as const, label: "Audit log" }] : []),
           ]}
         />
         {tab === "capabilities" && <Capabilities />}
+        {tab === "team" && <Team />}
+        {tab === "account" && <Account />}
         {tab === "tokens" && <Tokens />}
         {tab === "audit" && isAdmin && <Audit />}
       </div>

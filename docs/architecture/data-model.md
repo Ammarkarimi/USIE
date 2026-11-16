@@ -21,7 +21,9 @@ this. PostgreSQL row-level security is a planned second layer.
 |---|---|---|
 | Organization | `organizations` | implemented |
 | User | `users` (argon2id hashes) | implemented |
-| — membership & role | `memberships` (`owner`, `admin`, `member`, `viewer`) | implemented; no management API yet |
+| — membership & role | `memberships` (`owner`, `admin`, `member`, `viewer`) | implemented; managed through `/members` |
+| — invitations | `invitations` (SHA-256 of the token; one open invitation per address and organization) | implemented |
+| — password resets | `password_resets` (SHA-256 of the token; single use; a newer link voids older ones) | implemented |
 | — sessions, API tokens | `sessions`, `api_tokens` (SHA-256 of secrets only) | implemented |
 | Workspace | `workspaces` | implemented |
 | Repository | `repositories` | implemented |

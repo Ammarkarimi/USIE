@@ -37,6 +37,10 @@ values stop the process at startup with a message naming the variable.
 | `USIE_AI_USER_REQUESTS_PER_HOUR` | `30` | Questions per user per hour. |
 | `USIE_AI_MAX_CONCURRENT` | `4` | Answers (and, separately, change proposals) generated at the same time by one API process. |
 | `USIE_AI_CHANGES_PER_HOUR` | `10` | AI change proposals per user per hour. Proposals share the daily token budget with answers. |
+| `USIE_PUBLIC_URL` | — | Public `https://` address of the web app, used in emailed links (for example `https://usie.example.com`). Required for email. |
+| `USIE_SMTP_ADDR` | — | SMTP submission server as `host:port` (for example `smtp.example.com:587`). Email is on only when this, `USIE_SMTP_FROM` and `USIE_PUBLIC_URL` are set. |
+| `USIE_SMTP_FROM` | — | Sender address, for example `USIE <usie@example.com>`. |
+| `USIE_SMTP_USERNAME` / `USIE_SMTP_PASSWORD` | — | Submission credentials. Store the password as a secret. They are only sent after STARTTLS; a server that does not offer it is refused. Without email, invitation and reset links are shown to administrators to share. |
 | `USIE_SANDBOX` | `none` | Workers: `bubblewrap` enables verification runs (needs `bwrap` and `prlimit`, and unprivileged user namespaces). `none` disables them. |
 | `USIE_SANDBOX_NETWORK` | `false` | Workers: let sandboxed builds reach the network. Off means no dependency downloads and no way for tested code to send data out. |
 | `USIE_SANDBOX_TIMEOUT` | `10m` | Workers: wall-clock limit of one sandboxed command. |

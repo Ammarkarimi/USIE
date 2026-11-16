@@ -12,6 +12,22 @@ func routes() []route {
 		{Method: "POST", Path: v + "/auth/logout", MinRole: "viewer", Handler: (*Server).logout},
 		{Method: "GET", Path: v + "/auth/me", MinRole: "viewer", Handler: (*Server).me},
 
+		{Method: "GET", Path: v + "/auth/organizations", MinRole: "viewer", Handler: (*Server).listMyOrganizations},
+		{Method: "POST", Path: v + "/auth/switch", MinRole: "viewer", Handler: (*Server).switchOrganization},
+		{Method: "POST", Path: v + "/auth/password", MinRole: "viewer", Handler: (*Server).changePassword},
+		{Method: "POST", Path: v + "/auth/password-reset", Handler: (*Server).requestPasswordReset, AuthLimited: true},
+		{Method: "POST", Path: v + "/auth/password-reset/confirm", Handler: (*Server).confirmPasswordReset, AuthLimited: true},
+
+		{Method: "GET", Path: v + "/members", MinRole: "viewer", Handler: (*Server).listMembers},
+		{Method: "PATCH", Path: v + "/members/{user_id}", MinRole: "admin", Handler: (*Server).updateMember},
+		{Method: "DELETE", Path: v + "/members/{user_id}", MinRole: "viewer", Handler: (*Server).removeMember},
+		{Method: "POST", Path: v + "/members/{user_id}/password-reset", MinRole: "admin", Handler: (*Server).issueMemberReset},
+		{Method: "GET", Path: v + "/invitations", MinRole: "admin", Handler: (*Server).listInvitations},
+		{Method: "POST", Path: v + "/invitations", MinRole: "admin", Handler: (*Server).createInvitation},
+		{Method: "DELETE", Path: v + "/invitations/{id}", MinRole: "admin", Handler: (*Server).revokeInvitation},
+		{Method: "POST", Path: v + "/invitations/preview", Handler: (*Server).previewInvitation, AuthLimited: true},
+		{Method: "POST", Path: v + "/invitations/accept", Handler: (*Server).acceptInvitation, AuthLimited: true},
+
 		{Method: "GET", Path: v + "/tokens", MinRole: "viewer", Handler: (*Server).listTokens},
 		{Method: "POST", Path: v + "/tokens", MinRole: "viewer", Handler: (*Server).createToken},
 		{Method: "DELETE", Path: v + "/tokens/{id}", MinRole: "viewer", Handler: (*Server).revokeToken},

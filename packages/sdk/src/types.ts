@@ -43,6 +43,52 @@ export interface SystemInfo {
   sources: Record<SourceKind, boolean>;
   limits: Record<string, number>;
   engine: { version: string; ir_schema_version: number; languages: { language: string; fingerprint: string }[] } | null;
+  /** Whether invitation and password reset links are sent by email. */
+  email?: boolean;
+}
+
+export interface Member {
+  user_id: string;
+  email: string;
+  display_name: string;
+  role: Role;
+  disabled: boolean;
+  joined_at: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  role: Role;
+}
+
+export type InvitationStatus = "open" | "accepted" | "revoked" | "expired";
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: Role;
+  created_by: string | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  status: InvitationStatus;
+}
+
+export interface InvitationPreview {
+  organization_name: string;
+  email: string;
+  role: Role;
+  existing_account: boolean;
+}
+
+export interface CreatedInvitation {
+  invitation: Invitation;
+  emailed: boolean;
+  /** Present when the link was not emailed; shown once. */
+  accept_path?: string;
+  email_error?: string;
 }
 
 export interface ApiToken {

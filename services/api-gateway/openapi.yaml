@@ -210,6 +210,787 @@ paths:
         - session: []
         - token: []
       x-min-role: "viewer"
+  "/auth/organizations":
+    get:
+      tags:
+        - "Team"
+      summary: "List the caller's organizations."
+      description: "List the organizations the caller belongs to, with the caller's role in each."
+      operationId: "get_auth_organizations"
+      responses:
+        "200":
+          description: "Organizations."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  organizations:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Organization"
+                  current:
+                    type: "string"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/auth/switch":
+    post:
+      tags:
+        - "Team"
+      summary: "Switch the session to another organization."
+      description: "Move the current session to another organization the caller belongs to. Only for session-authenticated callers; API tokens belong to one organization."
+      operationId: "post_auth_switch"
+      responses:
+        "200":
+          description: "Switched."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                organization_id:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "organization_id"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/auth/password":
+    post:
+      tags:
+        - "Team"
+      summary: "Change the caller's password."
+      description: "Change the caller's password. Requires the current password; other sessions of the user are signed out, this one is kept."
+      operationId: "post_auth_password"
+      responses:
+        "204":
+          description: "Changed."
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                current_password:
+                  type: "string"
+                new_password:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "current_password"
+                - "new_password"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/auth/password-reset":
+    post:
+      tags:
+        - "Team"
+      summary: "Request a password reset email."
+      description: "Email a one-hour reset link if the address has an account. The answer does not reveal whether it has. Returns 503 when the installation cannot send email."
+      operationId: "post_auth_password_reset"
+      responses:
+        "202":
+          description: "Accepted."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  message:
+                    type: "string"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "Email is not configured."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                email:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "email"
+      security: []
+  "/auth/password-reset/confirm":
+    post:
+      tags:
+        - "Team"
+      summary: "Set a new password with a reset link."
+      description: "Set a new password with a reset token from an email or an administrator. Every session of the user is signed out."
+      operationId: "post_auth_password_reset_confirm"
+      responses:
+        "200":
+          description: "Password changed."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  message:
+                    type: "string"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "The link is invalid, expired or already used."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                token:
+                  type: "string"
+                password:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "token"
+                - "password"
+      security: []
+  "/members":
+    get:
+      tags:
+        - "Team"
+      summary: "List the organization's members."
+      description: "List the members of the caller's organization with their roles."
+      operationId: "get_members"
+      responses:
+        "200":
+          description: "Members."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  members:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Member"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/members/{user_id}":
+    patch:
+      tags:
+        - "Team"
+      summary: "Change a member's role."
+      description: "Change a member's role. Admins manage admins, members and viewers; only owners grant or change the owner role. Nobody changes their own role, and the last owner cannot be demoted."
+      operationId: "patch_members_user_id"
+      responses:
+        "204":
+          description: "Changed."
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "A team rule forbids the change (for example removing the last owner)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                role:
+                  type: "string"
+                  enum:
+                    - "owner"
+                    - "admin"
+                    - "member"
+                    - "viewer"
+              additionalProperties: false
+              required:
+                - "role"
+      parameters:
+        - name: "user_id"
+          in: "path"
+          description: "User id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+    delete:
+      tags:
+        - "Team"
+      summary: "Remove a member, or leave."
+      description: "Remove a member from the organization (admin), or leave it (any member removing themselves). Ends the member's sessions in the organization and revokes their API tokens for it. The last owner cannot leave."
+      operationId: "delete_members_user_id"
+      responses:
+        "204":
+          description: "Removed."
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "A team rule forbids the change (for example removing the last owner)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "user_id"
+          in: "path"
+          description: "User id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/members/{user_id}/password-reset":
+    post:
+      tags:
+        - "Team"
+      summary: "Issue a password reset link for a member."
+      description: "Issue a one-time, 24-hour reset link for a member who belongs to no other organization. Returned once; for installations without email."
+      operationId: "post_members_user_id_password_reset"
+      responses:
+        "201":
+          description: "Link issued."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  reset_path:
+                    type: "string"
+                  expires_at:
+                    type: "string"
+                    format: "date-time"
+                additionalProperties: false
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "A team rule forbids the change (for example removing the last owner)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "user_id"
+          in: "path"
+          description: "User id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+  "/invitations":
+    get:
+      tags:
+        - "Team"
+      summary: "List invitations."
+      description: "List the organization's invitations, newest first."
+      operationId: "get_invitations"
+      responses:
+        "200":
+          description: "Invitations."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  invitations:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/Invitation"
+                  email_enabled:
+                    type: "boolean"
+                additionalProperties: false
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+    post:
+      tags:
+        - "Team"
+      summary: "Invite someone by email."
+      description: "Create a seven-day invitation. When email is configured the link is emailed; otherwise (or if sending fails) accept_path is returned once for the inviter to share. Only owners invite owners."
+      operationId: "post_invitations"
+      responses:
+        "201":
+          description: "Invitation created."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  invitation:
+                    $ref: "#/components/schemas/Invitation"
+                  emailed:
+                    type: "boolean"
+                  accept_path:
+                    type: "string"
+                  email_error:
+                    type: "string"
+                additionalProperties: false
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "A team rule forbids the change (for example removing the last owner)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                email:
+                  type: "string"
+                role:
+                  type: "string"
+                  enum:
+                    - "owner"
+                    - "admin"
+                    - "member"
+                    - "viewer"
+              additionalProperties: false
+              required:
+                - "email"
+                - "role"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+  "/invitations/{id}":
+    delete:
+      tags:
+        - "Team"
+      summary: "Revoke an invitation."
+      description: "Revoke an open invitation."
+      operationId: "delete_invitations_id"
+      responses:
+        "204":
+          description: "Revoked."
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "A team rule forbids the change (for example removing the last owner)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          description: "Invitation id (UUID)."
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "admin"
+  "/invitations/preview":
+    post:
+      tags:
+        - "Team"
+      summary: "Look up an invitation."
+      description: "Show the organization, address and role of an open invitation, and whether the address already has an account."
+      operationId: "post_invitations_preview"
+      responses:
+        "200":
+          description: "Invitation."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/InvitationPreview"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "The link is invalid, expired or already used."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                token:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "token"
+      security: []
+  "/invitations/accept":
+    post:
+      tags:
+        - "Team"
+      summary: "Accept an invitation."
+      description: "Accept an invitation and start a session in the organization. A new account needs password and display_name; an existing account must confirm its current password."
+      operationId: "post_invitations_accept"
+      responses:
+        "200":
+          description: "Session started."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Session"
+        "429":
+          description: "Rate limit exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "The existing account's password is not correct."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "The link is invalid, expired or already used."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                token:
+                  type: "string"
+                password:
+                  type: "string"
+                display_name:
+                  type: "string"
+              additionalProperties: false
+              required:
+                - "token"
+                - "password"
+      security: []
   "/tokens":
     get:
       tags:
@@ -3587,6 +4368,99 @@ components:
           type: "array"
           items:
             type: "string"
+    Member:
+      type: "object"
+      properties:
+        user_id:
+          type: "string"
+        email:
+          type: "string"
+        display_name:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "owner"
+            - "admin"
+            - "member"
+            - "viewer"
+        disabled:
+          type: "boolean"
+        joined_at:
+          type: "string"
+          format: "date-time"
+      additionalProperties: false
+    Organization:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "owner"
+            - "admin"
+            - "member"
+            - "viewer"
+      additionalProperties: false
+    Invitation:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        email:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "owner"
+            - "admin"
+            - "member"
+            - "viewer"
+        created_by:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "string"
+          format: "date-time"
+        expires_at:
+          type: "string"
+          format: "date-time"
+        accepted_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        revoked_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        status:
+          type: "string"
+          enum:
+            - "open"
+            - "accepted"
+            - "revoked"
+            - "expired"
+      additionalProperties: false
+    InvitationPreview:
+      type: "object"
+      properties:
+        organization_name:
+          type: "string"
+        email:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "owner"
+            - "admin"
+            - "member"
+            - "viewer"
+        existing_account:
+          type: "boolean"
+      additionalProperties: false
     Error:
       type: "object"
       properties:
@@ -3670,6 +4544,9 @@ components:
           type: "object"
           nullable: true
           additionalProperties: true
+        email:
+          type: "boolean"
+          description: "Whether invitation and password reset links are sent by email."
       additionalProperties: false
     ApiToken:
       type: "object"

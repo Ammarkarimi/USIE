@@ -12,6 +12,7 @@ import (
 
 	"github.com/ammarkarimi/usie/internal/platform/blob"
 	"github.com/ammarkarimi/usie/internal/platform/config"
+	"github.com/ammarkarimi/usie/internal/platform/mail"
 	"github.com/ammarkarimi/usie/internal/platform/runtime"
 	"github.com/ammarkarimi/usie/internal/store"
 	ai "github.com/ammarkarimi/usie/services/ai-reasoning"
@@ -79,6 +80,13 @@ func main() {
 		log.Info("AI answers enabled", "provider", provider.Name(), "model", provider.Model(), "effort", cfg.AIEffort)
 	} else {
 		log.Info("AI answers disabled: no AI provider configured")
+	}
+
+	if cfg.EmailEnabled() {
+		server.Mail = &mail.SMTP{Addr: cfg.SMTPAddr, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}
+		log.Info("email enabled for invitations and password resets", "smtp", cfg.SMTPAddr)
+	} else {
+		log.Info("email disabled: invitation and reset links are shown to administrators instead")
 	}
 
 	// The engine is optional here: it only feeds the system-information endpoint.

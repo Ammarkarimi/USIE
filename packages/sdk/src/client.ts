@@ -1,5 +1,5 @@
 import type {
-  AIConversation, AIStatus, ApiToken, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, CodeChange, FileDetail, GraphDiff, GraphNode, Impact, ImpactRequest, SandboxCapability, VerificationProfile, VerificationRun,
+  AIConversation, AIStatus, ApiToken, CreatedInvitation, Invitation, InvitationPreview, Member, Organization, Role, AuditEvent, Branch, Commit, Confidence, Dependency, DirEntry, Enqueued, CodeChange, FileDetail, GraphDiff, GraphNode, Impact, ImpactRequest, SandboxCapability, VerificationProfile, VerificationRun,
   GraphStats, Job, JobStatus, Reference, Repository, Session, SourceFile, SourceKind, Subgraph, SystemInfo, Version,
   Worker, Workspace,
 } from "./types";
@@ -101,6 +101,29 @@ export class UsieClient {
     await this.request<void>("POST", "/auth/logout");
     this.csrfToken = undefined;
   };
+
+  changePassword = (current_password: string, new_password: string) =>
+    this.request<void>("POST", "/auth/password", { body: { current_password, new_password } });
+  requestPasswordReset = (email: string) => this.request<{ message: string }>("POST", "/auth/password-reset", { body: { email } });
+  confirmPasswordReset = (token: string, password: string) =>
+    this.request<{ message: string }>("POST", "/auth/password-reset/confirm", { body: { token, password } });
+  myOrganizations = () => this.request<{ organizations: Organization[]; current: string }>("GET", "/auth/organizations");
+  switchOrganization = (organization_id: string) =>
+    this.request<Session>("POST", "/auth/switch", { body: { organization_id } }).then(this.remember);
+
+  // ---- team ----
+  listMembers = () => this.request<{ members: Member[] }>("GET", "/members").then((r) => r.members);
+  setMemberRole = (userId: string, role: Role) =>
+    this.request<void>("PATCH", `/members/${encodeURIComponent(userId)}`, { body: { role } });
+  removeMember = (userId: string) => this.request<void>("DELETE", `/members/${encodeURIComponent(userId)}`);
+  issuePasswordReset = (userId: string) =>
+    this.request<{ reset_path: string; expires_at: string }>("POST", `/members/${encodeURIComponent(userId)}/password-reset`);
+  listInvitations = () => this.request<{ invitations: Invitation[]; email_enabled: boolean }>("GET", "/invitations");
+  invite = (email: string, role: Role) => this.request<CreatedInvitation>("POST", "/invitations", { body: { email, role } });
+  revokeInvitation = (id: string) => this.request<void>("DELETE", `/invitations/${encodeURIComponent(id)}`);
+  previewInvitation = (token: string) => this.request<InvitationPreview>("POST", "/invitations/preview", { body: { token } });
+  acceptInvitation = (input: { token: string; password: string; display_name?: string }) =>
+    this.request<Session>("POST", "/invitations/accept", { body: input }).then(this.remember);
 
   listTokens = () => this.request<{ tokens: ApiToken[] }>("GET", "/tokens").then((r) => r.tokens);
   createToken = (input: { name: string; role: "viewer" | "member" | "admin"; expires_in_days?: number }) =>

@@ -60,6 +60,10 @@ external database and an object-storage blob backend (ADR 0004).
     restarts the machine). Without it, the Ask page says AI is not enabled.
     Answers are generated asynchronously and polled, so Vercel's proxy
     timeout does not limit them.
+11. Optional — email for invitations and password resets:
+    `fly secrets set USIE_PUBLIC_URL=https://usie-eight.vercel.app USIE_SMTP_ADDR=smtp.example.com:587 USIE_SMTP_FROM="USIE <usie@example.com>" USIE_SMTP_USERNAME=… USIE_SMTP_PASSWORD=…`
+    with your mail provider's submission settings. Without it, invite people
+    from Settings → Team and share the link shown once.
 
 ## Frontend (Vercel)
 

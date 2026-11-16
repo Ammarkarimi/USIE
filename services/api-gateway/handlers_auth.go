@@ -33,6 +33,7 @@ var features = []map[string]string{
 	{"id": "ai-reasoning", "status": "experimental", "detail": "Questions about an analyzed version are answered from knowledge-graph evidence; every claim is checked against the evidence it cites. Requires an AI provider to be configured."},
 	{"id": "transformation", "status": "experimental", "detail": "An AI model proposes edits that the server validates and applies to the analyzed sources, producing a diff and its change impact. Nothing is written to the repository; proposals are unverified until a verification run passes. Requires an AI provider."},
 	{"id": "verification", "status": "experimental", "detail": "Fixed build-and-test profiles run on workers in a bubblewrap sandbox without network or credentials, compared with the unchanged version. Requires USIE_SANDBOX=bubblewrap on a worker and the profile's toolchain."},
+	{"id": "team", "status": "implemented", "detail": "Invitations, member roles and removal, organization switching, password change and reset links. Links are emailed when SMTP is configured; otherwise administrators share them."},
 	{"id": "distributed-execution", "status": "implemented", "detail": "Multiple workers share a PostgreSQL job queue with leases, heartbeats, retries and cancellation, for analysis and verification jobs."},
 }
 
@@ -54,6 +55,7 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request, _ *store.Prin
 		"limits": map[string]int64{"max_upload_bytes": s.Cfg.MaxUploadBytes, "max_file_bytes": s.Cfg.MaxFileBytes,
 			"max_repository_files": int64(s.Cfg.MaxRepoFiles), "max_repository_bytes": s.Cfg.MaxRepoBytes},
 		"engine": s.Engine,
+		"email":  s.Mail != nil,
 	}
 	writeJSON(w, http.StatusOK, out)
 	return nil
