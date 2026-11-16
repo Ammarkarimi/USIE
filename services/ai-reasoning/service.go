@@ -105,9 +105,19 @@ func (s *Service) Status(ctx context.Context, orgID string) (Status, error) {
 }
 
 func (s *Service) usedToday(ctx context.Context, orgID string) (int64, error) {
+	return UsedToday(ctx, s.Pool, orgID)
+}
+
+// UsedToday is the organization's AI token use since 00:00 UTC, across
+// answers and code change proposals, which share one daily budget.
+func UsedToday(ctx context.Context, pool *pgxpool.Pool, orgID string) (int64, error) {
 	var used int64
-	err := s.Pool.QueryRow(ctx, `SELECT coalesce(sum(input_tokens + output_tokens + cache_read_tokens), 0) FROM ai_messages
-		WHERE organization_id = $1 AND created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`, orgID).Scan(&used)
+	err := pool.QueryRow(ctx, `SELECT coalesce(sum(t), 0) FROM (
+		SELECT input_tokens + output_tokens + cache_read_tokens AS t FROM ai_messages
+		 WHERE organization_id = $1 AND created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+		UNION ALL
+		SELECT input_tokens + output_tokens + cache_read_tokens FROM code_changes
+		 WHERE organization_id = $1 AND created_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') u`, orgID).Scan(&used)
 	return used, err
 }
 

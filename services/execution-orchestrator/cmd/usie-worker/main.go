@@ -17,8 +17,10 @@ import (
 	"github.com/ammarkarimi/usie/internal/platform/blob"
 	"github.com/ammarkarimi/usie/internal/platform/config"
 	"github.com/ammarkarimi/usie/internal/platform/runtime"
+	"github.com/ammarkarimi/usie/internal/store"
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	analysis "github.com/ammarkarimi/usie/services/semantic-analysis"
+	verify "github.com/ammarkarimi/usie/services/verification"
 )
 
 func main() {
@@ -75,14 +77,32 @@ func main() {
 	}
 
 	p := &pipeline.Pipeline{Pool: pool, Blobs: blobs, Engine: engine, Info: info, Cfg: cfg, Log: log}
+	sandbox, err := verify.New(ctx, verify.Config{Backend: cfg.Sandbox, Network: cfg.SandboxNetwork, Timeout: cfg.SandboxTimeout,
+		MemoryBytes: cfg.SandboxMemoryBytes, ReadOnlyPaths: cfg.SandboxReadOnlyPaths})
+	if err != nil {
+		// Analysis still works; verification jobs report the problem.
+		log.Error("verification sandbox unavailable; verification runs will fail with this error", "error", err.Error())
+		sandbox = nil
+	} else if sandbox != nil {
+		log.Info("verification sandbox ready", "sandbox", sandbox.Name(), "network", cfg.SandboxNetwork)
+	}
+	verifier := &verify.Runner{Pool: pool, Store: store.New(pool), Blobs: blobs, Sandbox: sandbox, Log: log,
+		MaxFileBytes: cfg.MaxFileBytes, TempDir: cfg.WorkDir()}
+	handler := func(ctx context.Context, job *orchestrator.Job, report func(string, any)) error {
+		if job.Kind == "verify_change" {
+			return verifier.Handle(ctx, job, report)
+		}
+		return p.Handle(ctx, job, report)
+	}
 	languages := make([]string, 0, len(info.Languages))
 	for _, l := range info.Languages {
 		languages = append(languages, l.Language)
 	}
 	worker := &orchestrator.Worker{
-		Queue: orchestrator.NewQueue(pool), Handler: p.Handle, Concurrency: cfg.WorkerConcurrency, Lease: cfg.JobLease,
+		Queue: orchestrator.NewQueue(pool), Handler: handler, Concurrency: cfg.WorkerConcurrency, Lease: cfg.JobLease,
 		Version: runtime.Version, Log: log,
-		Capabilities: map[string]any{"job_kinds": []string{"analyze_version"}, "languages": languages, "engine_version": info.Version},
+		Capabilities: map[string]any{"job_kinds": []string{"analyze_version", "verify_change"}, "languages": languages, "engine_version": info.Version,
+			"verification": verify.Describe(sandbox)},
 		OnFinish: func(_ *orchestrator.Job, outcome string, d time.Duration) {
 			finished.WithLabelValues(outcome).Inc()
 			duration.Observe(d.Seconds())

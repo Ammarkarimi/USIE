@@ -19,11 +19,14 @@ import (
 )
 
 type Job struct {
-	ID              string          `json:"id"`
-	OrgID           string          `json:"-"`
-	RepositoryID    string          `json:"repository_id"`
-	VersionID       string          `json:"version_id"`
-	Kind            string          `json:"kind"`
+	ID           string `json:"id"`
+	OrgID        string `json:"-"`
+	RepositoryID string `json:"repository_id"`
+	VersionID    string `json:"version_id"`
+	Kind         string `json:"kind"`
+	// SubjectID identifies what a non-analysis job works on (for
+	// verify_change, the verification run).
+	SubjectID       *string         `json:"subject_id,omitempty"`
 	Status          string          `json:"status"`
 	Priority        int             `json:"priority"`
 	Attempts        int             `json:"attempts"`
@@ -40,12 +43,12 @@ type Job struct {
 	RepositoryName  string          `json:"repository_name"`
 }
 
-const jobColumns = `j.id, j.organization_id, j.repository_id, j.version_id, j.kind, j.status, j.priority, j.attempts, j.max_attempts,
+const jobColumns = `j.id, j.organization_id, j.repository_id, j.version_id, j.kind, j.subject_id::text, j.status, j.priority, j.attempts, j.max_attempts,
 	j.cancel_requested, j.worker_id::text, j.stage, j.progress, j.error, j.created_at, j.started_at, j.finished_at, j.updated_at`
 
 func scanJob(row pgx.Row, extra ...any) (Job, error) {
 	var j Job
-	dest := append([]any{&j.ID, &j.OrgID, &j.RepositoryID, &j.VersionID, &j.Kind, &j.Status, &j.Priority, &j.Attempts, &j.MaxAttempts,
+	dest := append([]any{&j.ID, &j.OrgID, &j.RepositoryID, &j.VersionID, &j.Kind, &j.SubjectID, &j.Status, &j.Priority, &j.Attempts, &j.MaxAttempts,
 		&j.CancelRequested, &j.WorkerID, &j.Stage, &j.Progress, &j.Error, &j.CreatedAt, &j.StartedAt, &j.FinishedAt, &j.UpdatedAt}, extra...)
 	return j, row.Scan(dest...)
 }
@@ -94,9 +97,13 @@ func (q *Queue) recoverExpired(ctx context.Context) error {
 				UPDATE analysis_jobs SET status = 'failed', finished_at = now(), updated_at = now(), lease_expires_at = NULL,
 				       error = 'worker stopped responding and the retry limit was reached'
 				 WHERE status = 'running' AND lease_expires_at < now() AND attempts >= max_attempts
-				RETURNING version_id)
-			UPDATE repository_versions v SET status = 'failed', error = 'analysis worker stopped responding'
-			  FROM dead WHERE v.id = dead.version_id AND v.status IN ('pending', 'analyzing')`); err != nil {
+				RETURNING version_id, kind, subject_id),
+			versions AS (
+				UPDATE repository_versions v SET status = 'failed', error = 'analysis worker stopped responding'
+				  FROM dead WHERE dead.kind = 'analyze_version' AND v.id = dead.version_id AND v.status IN ('pending', 'analyzing')
+				RETURNING 1)
+			UPDATE verification_runs r SET status = 'error', error = 'the worker stopped responding', finished_at = now()
+			  FROM dead WHERE dead.kind = 'verify_change' AND r.id = dead.subject_id AND r.status IN ('queued', 'running')`); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -159,9 +166,19 @@ func (q *Queue) Finish(ctx context.Context, job *Job, workerID, outcome, errMsg 
 			return ErrLeaseLost
 		}
 		if outcome != "succeeded" {
-			// The handler marks the version ready itself, atomically with its results.
-			_, err = tx.Exec(ctx, `UPDATE repository_versions SET status = $2, error = $3 WHERE id = $1 AND status IN ('pending', 'analyzing')`,
-				job.VersionID, outcome, errMsg)
+			switch job.Kind {
+			case "analyze_version":
+				// The handler marks the version ready itself, atomically with its results.
+				_, err = tx.Exec(ctx, `UPDATE repository_versions SET status = $2, error = $3 WHERE id = $1 AND status IN ('pending', 'analyzing')`,
+					job.VersionID, outcome, errMsg)
+			case "verify_change":
+				status := "error"
+				if outcome == "cancelled" {
+					status = "cancelled"
+				}
+				_, err = tx.Exec(ctx, `UPDATE verification_runs SET status = $2, error = $3, finished_at = now() WHERE id = $1 AND status IN ('queued', 'running')`,
+					job.SubjectID, status, errMsg)
+			}
 		}
 		return err
 	})
@@ -182,7 +199,10 @@ func (q *Queue) RequestCancel(ctx context.Context, orgID, jobID string) (Job, er
 			if _, err := tx.Exec(ctx, `UPDATE analysis_jobs SET status = 'cancelled', cancel_requested = true, finished_at = now(), updated_at = now() WHERE id = $1`, jobID); err != nil {
 				return err
 			}
-			if _, err := tx.Exec(ctx, `UPDATE repository_versions SET status = 'cancelled' WHERE id = $1 AND status IN ('pending', 'analyzing')`, job.VersionID); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE repository_versions SET status = 'cancelled' WHERE id = $1 AND status IN ('pending', 'analyzing') AND $2 = 'analyze_version'`, job.VersionID, job.Kind); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE verification_runs SET status = 'cancelled', finished_at = now() WHERE id = $1 AND status = 'queued'`, job.SubjectID); err != nil {
 				return err
 			}
 			job.Status, job.CancelRequested = "cancelled", true

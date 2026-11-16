@@ -2357,6 +2357,487 @@ paths:
         - session: []
         - token: []
       x-min-role: "viewer"
+  "/changes":
+    get:
+      tags:
+        - "AI code changes"
+      summary: "List AI change proposals, newest first."
+      description: "List AI change proposals, newest first."
+      operationId: "get_changes"
+      responses:
+        "200":
+          description: "Proposals."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  changes:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/CodeChange"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "repository_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 200
+            default: 50
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+    post:
+      tags:
+        - "AI code changes"
+      summary: "Ask the AI provider to propose a code change for an analyzed version."
+      description: "The model receives evidence from the knowledge graph and a few related files in full, and returns search-and-replace edits. The server applies them to the stored sources; a proposal whose edits do not apply exactly is marked failed. The resulting diff, its change impact and the model's rationale, risks and test plan are stored. Nothing is written to the repository."
+      operationId: "post_changes"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/ProposeChangeRequest"
+      responses:
+        "202":
+          description: "The proposal is pending; poll it until its status changes."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/CodeChange"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The resource is not in a state that allows this."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "The feature is not configured on this installation."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/changes/{id}":
+    get:
+      tags:
+        - "AI code changes"
+      summary: "A proposal with its verification runs."
+      description: "A proposal with its verification runs."
+      operationId: "get_changes_id"
+      responses:
+        "200":
+          description: "Proposal."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  change:
+                    $ref: "#/components/schemas/CodeChange"
+                  verifications:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/VerificationRun"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/changes/{id}/discard":
+    post:
+      tags:
+        - "AI code changes"
+      summary: "Discard a finished proposal (its creator or an administrator). It is kept for the audit trail."
+      description: "Discard a finished proposal (its creator or an administrator). It is kept for the audit trail."
+      operationId: "post_changes_id_discard"
+      responses:
+        "200":
+          description: "Discarded proposal."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/CodeChange"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The resource is not in a state that allows this."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/changes/{id}/patch":
+    get:
+      tags:
+        - "AI code changes"
+      summary: "The proposal as a patch file (git apply / patch -p1)."
+      description: "The proposal as a patch file (git apply / patch -p1)."
+      operationId: "get_changes_id_patch"
+      responses:
+        "200":
+          description: "Unified diff."
+          content:
+            "text/x-diff":
+              schema:
+                type: "string"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The resource is not in a state that allows this."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/changes/{id}/verification-profiles":
+    get:
+      tags:
+        - "AI code changes"
+      summary: "Build-and-test profiles for the proposal's repository, and whether an online worker's sandbox can run each."
+      description: "Build-and-test profiles for the proposal's repository, and whether an online worker's sandbox can run each."
+      operationId: "get_changes_id_verification_profiles"
+      responses:
+        "200":
+          description: "Profiles."
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  sandbox:
+                    type: "object"
+                    nullable: true
+                    properties:
+                      sandbox:
+                        type: "string"
+                      network:
+                        type: "boolean"
+                      programs:
+                        type: "array"
+                        items:
+                          type: "string"
+                  profiles:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/VerificationProfile"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
+  "/changes/{id}/verifications":
+    post:
+      tags:
+        - "AI code changes"
+      summary: "Run a verification profile on the proposal in a worker's sandbox, optionally against the unchanged version first."
+      description: "Commands are the profile's fixed commands; they run in a bubblewrap sandbox with no network (unless the operator enabled it), a cleared environment, an unprivileged user and resource limits. At most 3 runs per organization are queued or running at once."
+      operationId: "post_changes_id_verifications"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/VerifyRequest"
+      responses:
+        "202":
+          description: "The run is queued."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/VerificationRun"
+        "400":
+          description: "Invalid request."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "The resource is not in a state that allows this."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "The feature is not configured on this installation."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "member"
+  "/verifications/{id}":
+    get:
+      tags:
+        - "AI code changes"
+      summary: "A verification run with per-step exit codes, output and test counts."
+      description: "A verification run with per-step exit codes, output and test counts."
+      operationId: "get_verifications_id"
+      responses:
+        "200":
+          description: "Run."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/VerificationRun"
+        "401":
+          description: "Authentication required."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "Role does not permit this action, or the CSRF token is missing."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "Not found (also returned for resources of other organizations)."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Rate limit, AI budget or verification capacity exceeded."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      security:
+        - session: []
+        - token: []
+      x-min-role: "viewer"
   "/workers":
     get:
       tags:
@@ -2815,6 +3296,174 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    ProposeChangeRequest:
+      type: "object"
+      required: ["version_id", "request"]
+      properties:
+        version_id:
+          type: "string"
+          format: "uuid"
+        request:
+          type: "string"
+          minLength: 1
+          maxLength: 4000
+        focus_key:
+          type: "string"
+          description: "Optional node key the change is about."
+      additionalProperties: false
+    VerifyRequest:
+      type: "object"
+      required: ["profile"]
+      properties:
+        profile:
+          type: "string"
+        baseline:
+          type: "boolean"
+          default: true
+          description: "Also run the profile on the unchanged version, to compare."
+      additionalProperties: false
+    CodeChange:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        repository_id:
+          type: "string"
+        version_id:
+          type: "string"
+        request:
+          type: "string"
+        focus_key:
+          type: "string"
+        status:
+          type: "string"
+          enum: ["pending", "proposed", "declined", "failed", "discarded"]
+        summary:
+          type: "string"
+        rationale:
+          type: "string"
+        risks:
+          type: "array"
+          items:
+            type: "string"
+        test_plan:
+          type: "array"
+          items:
+            type: "string"
+        limitations:
+          type: "array"
+          items:
+            type: "string"
+        edits:
+          type: "array"
+          items:
+            type: "object"
+        diff:
+          type: "string"
+        files_changed:
+          type: "integer"
+        lines_added:
+          type: "integer"
+        lines_removed:
+          type: "integer"
+        impact:
+          type: "object"
+          description: "Change impact of the diff (see Impact); empty until proposed."
+        context:
+          type: "array"
+          items:
+            type: "object"
+        provider:
+          type: "string"
+        model:
+          type: "string"
+        input_tokens:
+          type: "integer"
+        output_tokens:
+          type: "integer"
+        cache_read_tokens:
+          type: "integer"
+        latency_ms:
+          type: "integer"
+        error:
+          type: "string"
+        created_by:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "string"
+          format: "date-time"
+        completed_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+    VerificationProfile:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        label:
+          type: "string"
+        description:
+          type: "string"
+        requires:
+          type: "array"
+          items:
+            type: "string"
+        steps:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              name:
+                type: "string"
+              argv:
+                type: "array"
+                items:
+                  type: "string"
+              tests:
+                type: "boolean"
+        detected:
+          type: "boolean"
+        available:
+          type: "boolean"
+        reason:
+          type: "string"
+    VerificationRun:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        change_id:
+          type: "string"
+        version_id:
+          type: "string"
+        profile:
+          type: "string"
+        baseline:
+          type: "boolean"
+        status:
+          type: "string"
+          enum: ["queued", "running", "passed", "failed", "error", "cancelled"]
+        result:
+          type: "object"
+          description: "Sandbox, per-step exit codes, clipped output and test counts for the baseline and the change, and tests newly failing or fixed."
+        error:
+          type: "string"
+        created_by:
+          type: "string"
+          nullable: true
+        created_at:
+          type: "string"
+          format: "date-time"
+        started_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        finished_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
     ImpactRequest:
       type: "object"
       properties:

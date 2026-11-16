@@ -57,6 +57,21 @@ type Config struct {
 	AIDailyTokenBudget    int64
 	AIUserRequestsPerHour int
 	AIMaxConcurrent       int
+	// AIChangesPerHour caps AI change proposals per user.
+	AIChangesPerHour int
+
+	// Sandbox is the verification sandbox: "none" (verification disabled)
+	// or "bubblewrap". It runs repository builds and tests.
+	Sandbox string
+	// SandboxNetwork lets sandboxed builds reach the network (off: no
+	// dependency downloads, and no way to send data out).
+	SandboxNetwork bool
+	SandboxTimeout time.Duration
+	// SandboxMemoryBytes is the address-space limit of one command.
+	SandboxMemoryBytes int64
+	// SandboxReadOnlyPaths are extra host paths (toolchains outside /usr)
+	// mounted read-only in the sandbox.
+	SandboxReadOnlyPaths []string
 
 	// TrustedProxyHops is the number of reverse proxies in front of the API
 	// that append to X-Forwarded-For (counting the one that connects). 0
@@ -151,6 +166,19 @@ func Load() (Config, error) {
 	c.AIDailyTokenBudget = integer("USIE_AI_DAILY_TOKEN_BUDGET", 2_000_000)
 	c.AIUserRequestsPerHour = int(integer("USIE_AI_USER_REQUESTS_PER_HOUR", 30))
 	c.AIMaxConcurrent = int(integer("USIE_AI_MAX_CONCURRENT", 4))
+	c.AIChangesPerHour = int(integer("USIE_AI_CHANGES_PER_HOUR", 10))
+	c.Sandbox = env("USIE_SANDBOX", "none")
+	c.SandboxNetwork = boolean("USIE_SANDBOX_NETWORK", false)
+	c.SandboxTimeout = duration("USIE_SANDBOX_TIMEOUT", 10*time.Minute)
+	c.SandboxMemoryBytes = integer("USIE_SANDBOX_MEMORY_BYTES", 8<<30)
+	for _, p := range strings.Split(os.Getenv("USIE_SANDBOX_READONLY_PATHS"), ":") {
+		if p = strings.TrimSpace(p); p != "" {
+			if !filepath.IsAbs(p) {
+				fail("USIE_SANDBOX_READONLY_PATHS", fmt.Errorf("%q is not an absolute path", p))
+			}
+			c.SandboxReadOnlyPaths = append(c.SandboxReadOnlyPaths, filepath.Clean(p))
+		}
+	}
 	if v := os.Getenv("USIE_TRUSTED_PROXY_HOPS"); v != "" {
 		n, e := strconv.Atoi(v)
 		if e == nil && (n < 0 || n > 10) {
@@ -170,6 +198,11 @@ func Load() (Config, error) {
 	case "first-user", "open", "closed":
 	default:
 		return c, fmt.Errorf("USIE_SIGNUP_MODE must be first-user, open or closed")
+	}
+	switch c.Sandbox {
+	case "none", "bubblewrap":
+	default:
+		return c, fmt.Errorf("USIE_SANDBOX must be none or bubblewrap")
 	}
 	switch c.AIProvider {
 	case "none":

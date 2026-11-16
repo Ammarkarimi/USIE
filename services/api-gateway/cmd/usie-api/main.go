@@ -19,6 +19,7 @@ import (
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	graph "github.com/ammarkarimi/usie/services/knowledge-graph"
 	analysis "github.com/ammarkarimi/usie/services/semantic-analysis"
+	transform "github.com/ammarkarimi/usie/services/transformation"
 )
 
 func main() {
@@ -67,6 +68,13 @@ func main() {
 		}
 		if err := server.AI.FailStale(ctx); err != nil {
 			log.Warn("could not clean up interrupted AI answers", "error", err.Error())
+		}
+		server.Changes = &transform.Service{
+			Pool: pool, Provider: provider, Graph: server.Graph, Sources: api.AISources(st, blobs, cfg.MaxFileBytes), Log: log,
+			Cfg: transform.Config{DailyTokenBudget: cfg.AIDailyTokenBudget, UserRequestsPerHour: cfg.AIChangesPerHour, MaxConcurrent: cfg.AIMaxConcurrent},
+		}
+		if err := server.Changes.FailStale(ctx); err != nil {
+			log.Warn("could not clean up interrupted change proposals", "error", err.Error())
 		}
 		log.Info("AI answers enabled", "provider", provider.Name(), "model", provider.Model(), "effort", cfg.AIEffort)
 	} else {

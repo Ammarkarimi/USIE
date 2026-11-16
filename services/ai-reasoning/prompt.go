@@ -40,6 +40,12 @@ func boundary() string {
 // RenderUserTurn places the evidence inside a randomly named element and the
 // question after it.
 func RenderUserTurn(pack *ContextPack, question string) string {
+	return RenderTask(pack, "Question", question)
+}
+
+// RenderTask places the evidence inside a randomly named element and the
+// task, under the given heading, after it.
+func RenderTask(pack *ContextPack, heading, task string) string {
 	tag := boundary()
 	var b strings.Builder
 	fmt.Fprintf(&b, "The evidence is inside the element named %s. Each piece of evidence is an item element with an id attribute.\n\n<%s>\n", tag, tag)
@@ -65,8 +71,8 @@ func RenderUserTurn(pack *ContextPack, question string) string {
 	if pack.Focus != "" {
 		fmt.Fprintf(&b, "The engineer is looking at %s.\n", sanitizeAttr(pack.Focus))
 	}
-	b.WriteString("Question:\n")
-	b.WriteString(neutralize(question, tag))
+	b.WriteString(heading + ":\n")
+	b.WriteString(neutralize(task, tag))
 	return b.String()
 }
 

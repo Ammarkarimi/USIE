@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/ammarkarimi/usie/internal/textdiff"
 )
 
 // LineRange is an inclusive range of 1-based line numbers. An insertion
@@ -195,96 +197,31 @@ func appendRange(rs []LineRange, r LineRange) []LineRange {
 // as a change of the whole file.
 const maxEditDistance = 4000
 
-// ChangedLines compares two texts line by line (Myers' algorithm) and
-// returns the ranges of `head` lines that were added or modified, plus
-// insertion points for pure deletions. ok is false when the difference
+// ChangedLines compares two texts line by line and returns the ranges of
+// `head` lines that were added or modified, plus, for pure deletions, the
+// head line at the deletion point. ok is false when the difference
 // exceeds the bound, in which case the whole file should be treated as
 // changed.
 func ChangedLines(base, head string) (ranges []LineRange, ok bool) {
-	a := splitLines(base)
-	b := splitLines(head)
-	n, m := len(a), len(b)
-	maxD := n + m
-	if maxD > maxEditDistance {
-		maxD = maxEditDistance
-	}
-	off := maxD + 1
-	v := make([]int, 2*maxD+3)
-	var trace [][]int
-	found := false
-	for d := 0; d <= maxD && !found; d++ {
-		snapshot := make([]int, len(v))
-		copy(snapshot, v)
-		trace = append(trace, snapshot)
-		for k := -d; k <= d; k += 2 {
-			var x int
-			if k == -d || (k != d && v[off+k-1] < v[off+k+1]) {
-				x = v[off+k+1]
-			} else {
-				x = v[off+k-1] + 1
-			}
-			y := x - k
-			for x < n && y < m && a[x] == b[y] {
-				x++
-				y++
-			}
-			v[off+k] = x
-			if x >= n && y >= m {
-				found = true
-				break
-			}
-		}
-	}
-	if !found {
+	a, b := textdiff.Lines(base), textdiff.Lines(head)
+	ops, ok := textdiff.Edits(a, b, maxEditDistance)
+	if !ok {
 		return nil, false
 	}
-	// Backtrack to mark changed head lines.
-	changed := make([]bool, m+1)
-	x, y := n, m
-	for d := len(trace) - 1; d > 0; d-- {
-		vv := trace[d]
-		k := x - y
-		var prevK int
-		if k == -d || (k != d && vv[off+k-1] < vv[off+k+1]) {
-			prevK = k + 1
-		} else {
-			prevK = k - 1
+	for _, op := range ops {
+		var line int
+		switch op.Kind {
+		case textdiff.Insert:
+			line = op.B + 1
+		case textdiff.Delete:
+			// The head line now at the deletion point.
+			line = min(op.B+1, len(b))
+		default:
+			continue
 		}
-		prevX := vv[off+prevK]
-		prevY := prevX - prevK
-		for x > prevX && y > prevY {
-			x--
-			y--
-		}
-		if x == prevX {
-			// Insertion of b[prevY].
-			if prevY < m {
-				changed[prevY] = true
-			}
-		} else {
-			// Deletion of a[prevX]: mark the head line at the deletion point.
-			mark := y
-			if mark >= m {
-				mark = m - 1
-			}
-			if mark >= 0 {
-				changed[mark] = true
-			}
-		}
-		x, y = prevX, prevY
-	}
-	for i := 0; i < m; i++ {
-		if changed[i] {
-			ranges = appendRange(ranges, LineRange{i + 1, i + 1})
+		if line >= 1 {
+			ranges = appendRange(ranges, LineRange{line, line})
 		}
 	}
 	return ranges, true
-}
-
-func splitLines(s string) []string {
-	if s == "" {
-		return nil
-	}
-	s = strings.TrimSuffix(s, "\n")
-	return strings.Split(s, "\n")
 }

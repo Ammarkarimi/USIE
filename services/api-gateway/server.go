@@ -33,6 +33,7 @@ import (
 	orchestrator "github.com/ammarkarimi/usie/services/execution-orchestrator"
 	graph "github.com/ammarkarimi/usie/services/knowledge-graph"
 	analysis "github.com/ammarkarimi/usie/services/semantic-analysis"
+	transform "github.com/ammarkarimi/usie/services/transformation"
 )
 
 const (
@@ -55,6 +56,8 @@ type Server struct {
 	Engine *analysis.Info
 	// AI answers questions about repositories; nil disables the feature.
 	AI *ai.Service
+	// Changes produces AI-proposed code changes; nil disables the feature.
+	Changes *transform.Service
 	// WebDir, when set, is served as the single-page application.
 	WebDir string
 

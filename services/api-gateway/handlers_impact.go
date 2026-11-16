@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -193,10 +194,14 @@ func (s *Server) compareVersions(r *http.Request, p *store.Principal, head store
 }
 
 func (s *Server) allFiles(r *http.Request, orgID, versionID string) (map[string]store.SourceFile, error) {
+	return s.allFilesCtx(r.Context(), orgID, versionID)
+}
+
+func (s *Server) allFilesCtx(ctx context.Context, orgID, versionID string) (map[string]store.SourceFile, error) {
 	out := map[string]store.SourceFile{}
 	const page = 5000
 	for offset := 0; ; offset += page {
-		files, total, err := s.Store.ListFiles(r.Context(), orgID, versionID, store.FileQuery{Recursive: true, Limit: page, Offset: offset})
+		files, total, err := s.Store.ListFiles(ctx, orgID, versionID, store.FileQuery{Recursive: true, Limit: page, Offset: offset})
 		if err != nil {
 			return nil, err
 		}

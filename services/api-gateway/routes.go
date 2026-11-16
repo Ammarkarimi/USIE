@@ -55,6 +55,15 @@ func routes() []route {
 		{Method: "DELETE", Path: v + "/ai/conversations/{id}", MinRole: "member", Handler: (*Server).deleteConversation},
 		{Method: "POST", Path: v + "/ai/conversations/{id}/messages", MinRole: "member", Handler: (*Server).askFollowup},
 
+		{Method: "GET", Path: v + "/changes", MinRole: "viewer", Handler: (*Server).listChanges},
+		{Method: "POST", Path: v + "/changes", MinRole: "member", Handler: (*Server).proposeChange},
+		{Method: "GET", Path: v + "/changes/{id}", MinRole: "viewer", Handler: (*Server).getChange},
+		{Method: "POST", Path: v + "/changes/{id}/discard", MinRole: "member", Handler: (*Server).discardChange},
+		{Method: "GET", Path: v + "/changes/{id}/patch", MinRole: "viewer", Handler: (*Server).changePatch},
+		{Method: "GET", Path: v + "/changes/{id}/verification-profiles", MinRole: "viewer", Handler: (*Server).verificationProfiles},
+		{Method: "POST", Path: v + "/changes/{id}/verifications", MinRole: "member", Handler: (*Server).requestVerification},
+		{Method: "GET", Path: v + "/verifications/{id}", MinRole: "viewer", Handler: (*Server).getVerification},
+
 		{Method: "GET", Path: v + "/workers", MinRole: "viewer", Handler: (*Server).listWorkers},
 		{Method: "GET", Path: v + "/audit-events", MinRole: "admin", Handler: (*Server).listAudit},
 	}
