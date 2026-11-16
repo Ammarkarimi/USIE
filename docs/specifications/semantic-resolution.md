@@ -1,6 +1,7 @@
 # Semantic resolution
 
-Status: **implemented** for Python, JavaScript, TypeScript, TSX, Go and Java.
+Status: **implemented** for Python, JavaScript, TypeScript, TSX, Go, Java,
+Kotlin, C#, Rust, C and C++.
 Code: `engines/semantic` (resolver), `engines/parser` (extraction),
 `internal/pipeline/build.go` (graph assembly).
 
@@ -292,6 +293,96 @@ and the class extends a type outside the repository, the reference is
 attributed to that external package (`java.member.inherited-external`,
 probable).
 
+### 6.6 Kotlin and C#
+
+Both use the Java rules of §6.5 (rules are reported as `kotlin.*` /
+`csharp.*`), with these differences.
+
+**Kotlin.** Top-level functions and properties are package members and can
+be imported by name. `object` declarations and companion-object members are
+static members. Calls of class names instantiate. Members are `final`
+unless declared `open`, `abstract` or `override`, so calls on typed values
+are **confirmed** unless the member is overridable. `val x = Foo()` gives
+`x` (and a property) the type `Foo`. Implicit imports: `kotlin.*` and the
+standard collection, text and I/O packages (`builtin`), and `java.lang`.
+Standard-library packages become `ext:kotlin:stdlib`. Multiplatform
+`expect`/`actual` declarations of one name are one type (the `expect`
+declaration represents it).
+
+**C#.** Namespaces nest; a type is looked up in each enclosing namespace from
+the innermost outwards. `using N;` is an on-demand import, `using A = N.T;`
+an alias, `using static T;` imports members. `global using` directives and
+`<Using Include="N" />` items of the project file (`.csproj`) apply to every
+file of the project. `partial` types are one type whose members are the
+union of all parts. Methods are non-virtual unless declared `virtual`,
+`abstract` or `override`, or called through an interface. `[Name]`
+attributes resolve to `NameAttribute` first. Extension methods (first
+parameter `this T`) are members of `T` and its resolved bases
+(`csharp.extension-method`, probable: overload resolution across imported
+namespaces is not modelled). `System.*` is `ext:dotnet:System`; packages
+from `<PackageReference>` are `ext:nuget:<id>` (probable: ids conventionally
+prefix namespaces). Well-known `System` types are attributed to
+`ext:dotnet:System` when no repository declaration matches
+(`csharp.import.dotnet-system-type`, probable), because SDK projects import
+their namespaces implicitly.
+
+### 6.7 Rust
+
+Crates come from `Cargo.toml` packages. Module paths follow the standard
+layout: `src/lib.rs` (or `src/main.rs` without a library) is `crate`,
+`src/a.rs` and `src/a/mod.rs` are `crate::a`; `src/main.rs` next to a
+library, `src/bin/*`, `tests/*`, `examples/*`, `benches/*` and `build.rs` are
+separate crate roots that name the library by its package name (`-` → `_`).
+`#[path]` attributes are not modelled.
+
+A name resolves through locals (with declared types, `let x = T::new()`
+call results and `Self`), then the items, `use` bindings and glob imports of
+the innermost enclosing module only (`rust.path.item`, `rust.use.glob`
+probable), then file submodules (`rust.path.module`), then other packages of
+the workspace (`rust.path.workspace-crate`), `std`/`core`/`alloc`
+(`ext:rust:std`), declared dependencies (`ext:cargo:<crate>`), the prelude
+(`builtin`), and finally an undeclared crate (`rust.path.undeclared-crate`,
+probable). `crate::`, `self::` and `super::` paths are followed exactly.
+`use` chains are memoized and cycle-checked. Methods of a type are collected
+from every `impl` block in the repository whose self type resolves to it;
+`impl Trait for Type` produces an IMPLEMENTS edge (`rust.impl.trait`) and
+makes the trait's provided methods members of the type (probable, since the
+impl may override them). Method calls on values of a known concrete type
+are confirmed (static dispatch); through `dyn Trait` or a trait, probable.
+Macro invocations are not recorded; type aliases are followed to the
+aliased type.
+
+### 6.8 C and C++
+
+There are no modules. `#include "x"` resolves relative to the including
+file (`c.include.relative`), then in include directories from `CMakeLists.txt`
+and Makefiles (`c.include.include-dir`), then to the repository file with
+that path suffix nearest the including file (`c.include.path-suffix`,
+probable). `<x>` includes of the C, POSIX and C++ standard libraries are
+`ext:c:libc`, `ext:c:posix` and `ext:cpp:std`; other system headers are
+`ext:c:<first path segment>` (probable). `.h` headers are parsed as C++ when
+the repository has C++ sources.
+
+A name is visible when it is declared in the file or in any header the file
+includes transitively. A call resolves to the repository's definition of
+that name when exactly one non-`static` definition exists
+(`c.scope.definition`, confirmed), to the visible declaration when none
+exists (`c.scope.declaration`), or to the first of several definitions
+(`c.link.variant`, probable: alternative builds). A name defined in the
+repository but declared in nothing the file includes is matched by name
+only (`heuristic.c.global-name`, **inferred**). `static` functions are
+visible only in their file. Macros are symbols (`#define F(x)` calls
+resolve to the macro).
+
+C++ adds namespaces (searched from the innermost outwards and through
+`using namespace`), classes with base classes, member functions declared in
+the class and defined outside it (`void C::m() {}` is the call target),
+`this->m()`, typed locals and fields (`auto x = f()` through the declared
+result type), and `std::` names (`ext:cpp:std`). Calls of `virtual` or
+`override` member functions are probable. Templates are not instantiated:
+template parameters are unresolved names, and members of a class template
+are looked up by name.
+
 ## 7. Unresolved reference reasons
 
 | Rule | Reason |
@@ -329,4 +420,13 @@ probable).
   members) and generated sources (protobuf, OpenAPI) are not seen; a
   reference to them is reported unresolved. Method references (`Foo::bar`)
   are not recorded.
-- C, C++, C#, Rust and Kotlin are inventoried but not parsed or resolved.
+- Rust: types inferred by the compiler (closure parameters, `for` and
+  `if let` bindings, most `let` bindings without an annotation or call) are
+  not known; `?` and `.await` in chains are not followed; macros are not
+  expanded.
+- C and C++: the preprocessor is not run. Conditional compilation includes
+  both branches; code generated by macros (for example namespaces opened by
+  a macro) is not seen. Templates are not instantiated; overloads are
+  resolved by name.
+- C# and Kotlin: lambda parameter types are not inferred; overloads and
+  extension method imports are resolved by name.

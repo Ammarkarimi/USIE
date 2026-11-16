@@ -1,11 +1,17 @@
-//! Java resolution rules.
+//! Resolution rules for Java, Kotlin and C#.
 //!
-//! Types are identified by fully qualified name (package declaration plus
+//! Types are identified by fully qualified name (package or namespace plus
 //! the nesting of type declarations), independently of file paths. Simple
 //! names are resolved in the order of the Java Language Specification
 //! (§6.4, §7.5): locals, members of enclosing types (including inherited
 //! ones), types of the compilation unit, single-type and single-static
-//! imports, types of the same package, on-demand imports, then `java.lang`.
+//! imports, types of the same package, on-demand imports, then the
+//! implicitly imported platform names. Kotlin adds package-level functions
+//! and properties; C# looks types up in the enclosing namespaces from the
+//! innermost outwards and treats `using N;` as an on-demand import.
+//!
+//! Rules are written with a `java.` prefix here; the resolver reports them
+//! with the prefix of the referencing file's language (`kotlin.`, `csharp.`).
 
 use crate::builtins;
 use crate::golang::local_type;
@@ -23,8 +29,29 @@ pub(crate) struct JavaIndex {
     /// Package of each file, and the files of each package, for the
     /// directory a package import points at.
     package_files: HashMap<String, Vec<usize>>,
+    /// Every declaration of a type that is split over several declarations
+    /// (C# `partial`, Kotlin `expect`/`actual`), keyed by each of them.
+    pub(crate) parts: HashMap<SymRef, Vec<SymRef>>,
+    /// Extension methods (C#) and functions (Kotlin) by name, with the last
+    /// segment of their receiver type.
+    extensions: HashMap<String, Vec<(SymRef, String)>>,
+    /// .NET project directories (with a project file) and the namespaces
+    /// each imports for all its files.
+    projects: Vec<(String, Vec<String>)>,
+    /// Kotlin package-level functions and properties by qualified name.
+    members: HashMap<String, Vec<SymRef>>,
     /// Declared Maven group ids, longest first.
     groups: Vec<String>,
+    /// Declared NuGet package ids, longest first.
+    nuget: Vec<String>,
+}
+
+/// Families resolved by this module.
+pub(crate) fn is_classic(family: LanguageFamily) -> bool {
+    matches!(
+        family,
+        LanguageFamily::Java | LanguageFamily::Kotlin | LanguageFamily::Csharp
+    )
 }
 
 impl JavaIndex {
@@ -34,8 +61,22 @@ impl JavaIndex {
             packages: HashMap::new(),
             package_of: HashMap::new(),
             package_files: HashMap::new(),
+            members: HashMap::new(),
+            parts: HashMap::new(),
+            extensions: HashMap::new(),
+            projects: Vec::new(),
             groups: Vec::new(),
+            nuget: Vec::new(),
         };
+        let mut nuget: Vec<String> = config
+            .dependencies
+            .iter()
+            .filter(|d| d.ecosystem == "nuget")
+            .map(|d| d.name.clone())
+            .collect();
+        nuget.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
+        nuget.dedup();
+        index.nuget = nuget;
         let mut groups: Vec<String> = config
             .dependencies
             .iter()
@@ -48,7 +89,7 @@ impl JavaIndex {
         groups.dedup();
         index.groups = groups;
         for (fi, f) in files.iter().enumerate() {
-            if f.family != LanguageFamily::Java {
+            if !is_classic(f.family) {
                 continue;
             }
             let package =
@@ -64,37 +105,161 @@ impl JavaIndex {
                 .or_default()
                 .push(fi);
             for sym in &f.ir.symbols {
-                if !matches!(sym.kind, SymbolKind::Class | SymbolKind::Interface) {
-                    continue;
-                }
-                // Member types only: local and anonymous classes have no
-                // qualified name.
-                let mut p = sym.parent;
+                // Namespace blocks (C#) contribute to the package; types
+                // nest inside types; anything else (local and anonymous
+                // classes) has no qualified name.
+                let mut namespaces: Vec<&str> = Vec::new();
+                let mut types: Vec<&str> = Vec::new();
                 let mut member = true;
+                let mut p = sym.parent;
                 while let Some(id) = p {
                     let ps = &f.ir.symbols[id as usize];
-                    if !matches!(ps.kind, SymbolKind::Class | SymbolKind::Interface) {
-                        member = false;
-                        break;
+                    match ps.kind {
+                        SymbolKind::Namespace => namespaces.push(&ps.name),
+                        SymbolKind::Class | SymbolKind::Interface if namespaces.is_empty() => {
+                            types.push(&ps.name)
+                        }
+                        _ => {
+                            member = false;
+                            break;
+                        }
                     }
                     p = ps.parent;
                 }
                 if !member {
                     continue;
                 }
-                let fqn = if package.is_empty() {
-                    sym.qualified_name.clone()
-                } else {
-                    format!("{package}.{}", sym.qualified_name)
-                };
-                index.types.entry(fqn).or_default().push((fi, sym.id));
-                if sym.parent.is_none() {
-                    index
-                        .packages
-                        .entry(package.clone())
-                        .or_default()
-                        .push((fi, sym.id));
+                namespaces.reverse();
+                types.reverse();
+                let mut ns: Vec<&str> = Vec::new();
+                if !package.is_empty() {
+                    ns.push(&package);
                 }
+                ns.extend(namespaces);
+                let ns = ns.join(".");
+                if sym.kind == SymbolKind::Namespace {
+                    let full = if ns.is_empty() {
+                        sym.name.clone()
+                    } else {
+                        format!("{ns}.{}", sym.name)
+                    };
+                    index.package_files.entry(full).or_default().push(fi);
+                    continue;
+                }
+                let mut parts: Vec<&str> = Vec::new();
+                if !ns.is_empty() {
+                    parts.push(&ns);
+                }
+                parts.extend(types.iter().copied());
+                parts.push(&sym.name);
+                let fqn = parts.join(".");
+                match sym.kind {
+                    SymbolKind::Class | SymbolKind::Interface => {
+                        index.types.entry(fqn).or_default().push((fi, sym.id));
+                        if types.is_empty() {
+                            index.packages.entry(ns).or_default().push((fi, sym.id));
+                        }
+                    }
+                    SymbolKind::Function | SymbolKind::Variable | SymbolKind::Type
+                        if types.is_empty() && f.family == LanguageFamily::Kotlin =>
+                    {
+                        index.members.entry(fqn).or_default().push((fi, sym.id));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // .NET projects: implicit `<Using>` namespaces plus the `global
+        // using` directives of their files.
+        let mut projects: Vec<(String, Vec<String>)> = config
+            .paths
+            .iter()
+            .filter(|p| p.ends_with(".csproj"))
+            .map(|p| (crate::paths::dir_of(p).to_string(), Vec::new()))
+            .collect();
+        projects.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.cmp(b)));
+        projects.dedup();
+        for u in &config.dotnet_usings {
+            if let Some(p) = projects.iter_mut().find(|p| p.0 == u.dir.trim_matches('/')) {
+                p.1.push(u.namespace.clone());
+            }
+        }
+        for f in files.iter().filter(|f| f.family == LanguageFamily::Csharp) {
+            let globals =
+                f.ir.imports
+                    .iter()
+                    .filter(|i| i.kind == ImportKind::Wildcard && i.level == 1)
+                    .map(|i| i.module.clone());
+            let project = projects
+                .iter_mut()
+                .find(|p| crate::paths::is_under(f.path, &p.0));
+            match project {
+                Some(p) => p.1.extend(globals),
+                None => {
+                    let g: Vec<String> = globals.collect();
+                    if !g.is_empty() {
+                        projects.push((String::new(), g));
+                    }
+                }
+            }
+        }
+        for p in &mut projects {
+            p.1.sort();
+            p.1.dedup();
+        }
+        index.projects = projects;
+        for (fi, f) in files.iter().enumerate() {
+            if !is_classic(f.family) {
+                continue;
+            }
+            for sym in &f.ir.symbols {
+                let receiver = sym
+                    .attrs
+                    .get("extension_receiver")
+                    .and_then(|r| r.as_array())
+                    .and_then(|r| r.last())
+                    .and_then(|r| r.as_str());
+                if let Some(r) = receiver {
+                    index
+                        .extensions
+                        .entry(sym.name.clone())
+                        .or_default()
+                        .push(((fi, sym.id), r.to_string()));
+                }
+            }
+        }
+        // Types declared in several parts.
+        let mut parts: Vec<Vec<SymRef>> = Vec::new();
+        for decls in index.types.values_mut() {
+            if decls.len() < 2 {
+                continue;
+            }
+            let split = decls.iter().all(|(f, id)| {
+                let sym = &files[*f].ir.symbols[*id as usize];
+                let mods = sym.attrs.get("modifiers").and_then(|m| m.as_array());
+                mods.is_some_and(|m| {
+                    m.iter()
+                        .any(|k| k == "partial" || k == "expect" || k == "actual")
+                })
+            });
+            if split {
+                // The `expect` declaration (the common API) represents the type.
+                decls.sort_by_key(|(f, id)| {
+                    let sym = &files[*f].ir.symbols[*id as usize];
+                    let expect = sym
+                        .attrs
+                        .get("modifiers")
+                        .and_then(|m| m.as_array())
+                        .is_some_and(|m| m.iter().any(|k| k == "expect"));
+                    (!expect, *f, *id)
+                });
+                parts.push(decls.clone());
+                decls.truncate(1);
+            }
+        }
+        for group in parts {
+            for r in &group {
+                index.parts.insert(*r, group.clone());
             }
         }
         index
@@ -125,7 +290,11 @@ fn starts_upper(s: &str) -> bool {
 
 impl<'a> Resolver<'a> {
     fn java_type(&self, fqn: &str, rule: &'static str) -> Option<Res> {
-        let decls = self.java.types.get(fqn)?;
+        let decls = self
+            .java
+            .types
+            .get(fqn)
+            .or_else(|| self.java.members.get(fqn))?;
         Some(match decls.as_slice() {
             [(f, id)] => Ok(Found {
                 target: Target::Symbol(*f, *id),
@@ -142,10 +311,23 @@ impl<'a> Resolver<'a> {
         })
     }
 
-    /// An external package node for a Java package or type name.
-    fn java_external(&self, name: &str) -> Found {
+    /// An external package node for a package/namespace or type name used
+    /// in file `fi`.
+    fn java_external(&self, fi: usize, name: &str) -> Found {
+        if self.files[fi].family == LanguageFamily::Csharp {
+            return self.dotnet_external(name);
+        }
         let package: Vec<&str> = name.split('.').take_while(|s| !starts_upper(s)).collect();
         let package = package.join(".");
+        if package == "kotlin" || package.starts_with("kotlin.") {
+            return self.external(
+                "kotlin",
+                "stdlib",
+                &[("stdlib", true)],
+                Confidence::Confirmed,
+                "java.import.kotlin-stdlib",
+            );
+        }
         if builtins::is_jdk_package(&package) {
             let module: Vec<&str> = package.split('.').take(2).collect();
             return self.external(
@@ -181,7 +363,45 @@ impl<'a> Resolver<'a> {
         )
     }
 
-    /// Resolve the import at index `idx` of Java file `fi`.
+    /// .NET namespaces: the base class library (`System.*`), declared NuGet
+    /// packages (whose ids conventionally prefix their namespaces), or an
+    /// undeclared package named after the first two segments.
+    fn dotnet_external(&self, name: &str) -> Found {
+        if name == "System" || name.starts_with("System.") {
+            return self.external(
+                "dotnet",
+                "System",
+                &[("stdlib", true)],
+                Confidence::Confirmed,
+                "java.import.dotnet-bcl",
+            );
+        }
+        for id in &self.java.nuget {
+            if name == id
+                || (name.len() > id.len()
+                    && name[..id.len()].eq_ignore_ascii_case(id)
+                    && name.as_bytes()[id.len()] == b'.')
+            {
+                return self.external(
+                    "nuget",
+                    id,
+                    &[("declared", true)],
+                    Confidence::Probable,
+                    "java.import.declared-dependency",
+                );
+            }
+        }
+        let root: Vec<&str> = name.split('.').take(2).collect();
+        self.external(
+            "nuget",
+            &root.join("."),
+            &[("declared", false)],
+            Confidence::Probable,
+            "java.import.undeclared-package",
+        )
+    }
+
+    /// Resolve the import at index `idx` of a Java, Kotlin or C# file `fi`.
     pub(crate) fn java_import(&self, fi: usize, idx: usize) -> Res {
         let imp = &self.files[fi].ir.imports[idx];
         match imp.kind {
@@ -223,7 +443,7 @@ impl<'a> Resolver<'a> {
                         format!("package `{}` declares no type `{name}`", imp.module),
                     ));
                 }
-                Ok(self.java_external(&fqn))
+                Ok(self.java_external(fi, &fqn))
             }
             ImportKind::Wildcard => {
                 if self.java.is_package(&imp.module) {
@@ -244,10 +464,59 @@ impl<'a> Resolver<'a> {
                 if let Some(res) = self.java_type(&imp.module, "java.import.on-demand") {
                     return res;
                 }
-                Ok(self.java_external(&imp.module))
+                Ok(self.java_external(fi, &imp.module))
             }
             _ => Err(Miss::new("java.import", "unsupported import form")),
         }
+    }
+
+    /// An extension method or function named `name` for values of the
+    /// type `class` (by type name; overloads by receiver namespace are not
+    /// distinguished).
+    pub(crate) fn java_extension(&self, class: SymRef, name: &str) -> Option<Found> {
+        let type_name = &self.sym(class).name;
+        let mut names = vec![type_name.clone()];
+        for b in self.bases.borrow().get(&class).into_iter().flatten() {
+            names.push(self.sym(*b).name.clone());
+        }
+        let hits: Vec<SymRef> = self
+            .java
+            .extensions
+            .get(name)?
+            .iter()
+            .filter(|(_, r)| names.contains(r))
+            .map(|(s, _)| *s)
+            .collect();
+        // Overloads declared in one class count as one candidate.
+        let first = *hits.first()?;
+        let owner = |r: &SymRef| (r.0, self.sym(*r).parent);
+        if !hits.iter().all(|h| owner(h) == owner(&first)) {
+            return None;
+        }
+        Some(Found {
+            target: Target::Symbol(first.0, first.1),
+            confidence: Confidence::Probable,
+            rule: "java.extension-method",
+        })
+    }
+
+    /// The package or namespace that encloses `scope` in file `fi`.
+    fn java_namespace(&self, fi: usize, scope: Option<u32>) -> String {
+        let ir = self.files[fi].ir;
+        let mut parts: Vec<&str> = Vec::new();
+        let mut cur = scope;
+        while let Some(id) = cur {
+            let sym = &ir.symbols[id as usize];
+            if sym.kind == SymbolKind::Namespace {
+                parts.push(&sym.name);
+            }
+            cur = sym.parent;
+        }
+        if let Some(p) = self.java.package_of.get(&fi).filter(|p| !p.is_empty()) {
+            parts.push(p);
+        }
+        parts.reverse();
+        parts.join(".")
     }
 
     /// The enclosing class or interface of a scope.
@@ -266,16 +535,29 @@ impl<'a> Resolver<'a> {
 
     /// Confidence of a member access on a value of a declared type: instance
     /// methods are dispatched on the runtime class, which may be a subclass.
+    /// Kotlin and C# members are not overridable unless declared `open`,
+    /// `virtual`, `abstract` or `override`, or declared in an interface.
     pub(crate) fn java_member_confidence(&self, member: SymRef, inherited: bool) -> Confidence {
         let sym = self.sym(member);
+        let has = |words: &[&str]| {
+            sym.attrs
+                .get("modifiers")
+                .and_then(|m| m.as_array())
+                .is_some_and(|m| m.iter().any(|k| words.iter().any(|w| k == w)))
+        };
+        let in_interface = sym
+            .parent
+            .is_some_and(|p| self.sym((member.0, p)).kind == SymbolKind::Interface);
+        let overridable = match self.files[member.0].family {
+            LanguageFamily::Kotlin | LanguageFamily::Csharp => {
+                in_interface || has(&["open", "virtual", "abstract", "override"])
+            }
+            _ => !has(&["private", "final"]),
+        };
         let fixed = !sym.kind.is_callable()
             || sym.attrs.contains_key("static")
             || sym.attrs.contains_key("constructor")
-            || sym
-                .attrs
-                .get("modifiers")
-                .and_then(|m| m.as_array())
-                .is_some_and(|m| m.iter().any(|k| k == "private" || k == "final"));
+            || !overridable;
         if fixed && !inherited {
             Confidence::Confirmed
         } else {
@@ -324,7 +606,13 @@ impl<'a> Resolver<'a> {
         let ir = file.ir;
         let first = path[0].as_str();
 
-        // `this` and `super`.
+        // `this` and `super` (`base` in C#).
+        let csharp = file.family == LanguageFamily::Csharp;
+        let first = if csharp && first == "base" {
+            "super"
+        } else {
+            first
+        };
         if first == "this" || first == "super" {
             let Some(class) = self.java_enclosing_type(fi, scope) else {
                 return Err(Miss::new(
@@ -483,35 +771,55 @@ impl<'a> Resolver<'a> {
             let base = self.java_import(fi, imp)?;
             return self.descend(base, &path[1..]);
         }
-        // Types of the same package.
-        let package = self
-            .java
-            .package_of
-            .get(&fi)
-            .map(String::as_str)
-            .unwrap_or("");
-        let fqn = if package.is_empty() {
-            first.to_string()
-        } else {
-            format!("{package}.{first}")
-        };
-        if let Some(res) = self.java_type(&fqn, "java.scope.package-type") {
-            return self.descend(res?, &path[1..]);
-        }
-        // On-demand imports.
-        let mut hits: Vec<Found> = Vec::new();
-        let mut external_wildcards: Vec<usize> = Vec::new();
-        for (idx, imp) in ir.imports.iter().enumerate() {
-            if imp.kind != ImportKind::Wildcard {
-                continue;
+        // Types of the same package; in C#, of each enclosing namespace from
+        // the innermost outwards.
+        let mut namespace = self.java_namespace(fi, scope);
+        loop {
+            let fqn = if namespace.is_empty() {
+                first.to_string()
+            } else {
+                format!("{namespace}.{first}")
+            };
+            if let Some(res) = self.java_type(&fqn, "java.scope.package-type") {
+                return self.descend(res?, &path[1..]);
             }
-            let found = if self.java.is_package(&imp.module) {
-                self.java_type(&format!("{}.{first}", imp.module), "java.import.on-demand")
+            if !csharp || namespace.is_empty() {
+                break;
+            }
+            namespace = match namespace.rsplit_once('.') {
+                Some((outer, _)) => outer.to_string(),
+                None => String::new(),
+            };
+        }
+        // On-demand imports, including a .NET project's implicit usings.
+        let mut hits: Vec<Found> = Vec::new();
+        let mut external_wildcards: Vec<&str> = Vec::new();
+        let mut modules: Vec<&str> = ir
+            .imports
+            .iter()
+            .filter(|i| i.kind == ImportKind::Wildcard)
+            .map(|i| i.module.as_str())
+            .collect();
+        if csharp {
+            if let Some(p) = self
+                .java
+                .projects
+                .iter()
+                .find(|p| crate::paths::is_under(file.path, &p.0))
+            {
+                modules.extend(p.1.iter().map(String::as_str));
+            }
+            modules.sort_unstable();
+            modules.dedup();
+        }
+        for module in modules {
+            let found = if self.java.is_package(module) {
+                self.java_type(&format!("{module}.{first}"), "java.import.on-demand")
                     .and_then(Result::ok)
             } else if let Some(Ok(Found {
                 target: Target::Symbol(tf, tid),
                 ..
-            })) = self.java_type(&imp.module, "java.import.on-demand")
+            })) = self.java_type(module, "java.import.on-demand")
             {
                 // `import static a.b.C.*;`
                 self.member((tf, tid), first, 0)
@@ -525,7 +833,7 @@ impl<'a> Resolver<'a> {
                         rule: "java.import.static-on-demand",
                     })
             } else {
-                external_wildcards.push(idx);
+                external_wildcards.push(module);
                 None
             };
             if let Some(f) = found {
@@ -544,7 +852,14 @@ impl<'a> Resolver<'a> {
                 ))
             }
         }
-        if builtins::is_java_lang(first) {
+        let builtin = match file.family {
+            LanguageFamily::Kotlin => {
+                builtins::is_kotlin_builtin(first) || builtins::is_java_lang(first)
+            }
+            LanguageFamily::Csharp => builtins::is_csharp_builtin(first),
+            _ => builtins::is_java_lang(first),
+        };
+        if builtin {
             return Err(Miss {
                 rule: "builtin",
                 reason: String::new(),
@@ -566,17 +881,32 @@ impl<'a> Resolver<'a> {
                 .take_while(|s| !starts_upper(s))
                 .collect();
             if package.len() >= 2 && path.len() > package.len() {
-                return Ok(self.java_external(&path.join(".")));
+                return Ok(self.java_external(fi, &path.join(".")));
             }
         }
-        // A type from exactly one on-demand import of an external package.
-        if starts_upper(first) && external_wildcards.len() == 1 {
-            let module = &ir.imports[external_wildcards[0]].module;
-            let found = self.java_external(module);
+        // A type from on-demand imports of external packages that all map to
+        // the same external node (one package, or several `System.*`
+        // namespaces).
+        if starts_upper(first) && !external_wildcards.is_empty() {
+            let nodes: Vec<Found> = external_wildcards
+                .iter()
+                .map(|m| self.java_external(fi, m))
+                .collect();
+            if nodes.iter().all(|n| n.target == nodes[0].target) {
+                return Ok(Found {
+                    confidence: Confidence::Probable,
+                    rule: "java.import.on-demand-external",
+                    ..nodes[0].clone()
+                });
+            }
+        }
+        // Well-known `System` types: SDK-style projects import their
+        // namespaces implicitly, and no repository declaration matched.
+        if csharp && builtins::is_dotnet_implicit_type(first) {
             return Ok(Found {
                 confidence: Confidence::Probable,
-                rule: "java.import.on-demand-external",
-                ..found
+                rule: "java.import.dotnet-system-type",
+                ..self.dotnet_external("System")
             });
         }
         // An unqualified method inherited from a supertype outside the repository.

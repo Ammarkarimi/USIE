@@ -261,7 +261,10 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 
 	// ---- resolve --------------------------------------------------------
 	done = stage("resolving")
-	cfg := analysis.ResolveConfig{TsConfigs: facts.TsConfigs, Packages: facts.Packages, GoModules: facts.GoModules}
+	cfg := analysis.ResolveConfig{
+		TsConfigs: facts.TsConfigs, Packages: facts.Packages, GoModules: facts.GoModules,
+		RustCrates: facts.RustCrates, IncludeDirs: facts.IncludeDirs, DotnetUsings: facts.DotnetUsings,
+	}
 	var inputs []analysis.ResolveFile
 	for _, f := range files {
 		cfg.Paths = append(cfg.Paths, f.Path)
@@ -273,7 +276,7 @@ func (p *Pipeline) Handle(ctx context.Context, job *orchestrator.Job, report fun
 	seenDep := map[analysis.DeclaredDependency]bool{}
 	for _, d := range facts.Dependencies {
 		switch d.Ecosystem {
-		case "npm", "pypi", "go", "maven":
+		case "npm", "pypi", "go", "maven", "nuget", "cargo":
 			dep := analysis.DeclaredDependency{Ecosystem: d.Ecosystem, Name: d.Name}
 			if !seenDep[dep] {
 				seenDep[dep] = true
@@ -385,8 +388,16 @@ type cached struct {
 // content that has no cached analysis for the current parser fingerprint.
 func (p *Pipeline) parse(ctx context.Context, job *orchestrator.Job, files []*fileState, stats *Stats, report func(string, any)) error {
 	wanted := map[analysisKey][]*fileState{}
+	all := make([]string, len(files))
+	for i, f := range files {
+		all[i] = f.Path
+	}
+	cppHeaders := ingestion.CppHeaders(all)
 	for _, f := range files {
 		f.parserLang = ingestion.ParserLanguage(f.Path)
+		if cppHeaders && f.parserLang == "c" && strings.HasSuffix(strings.ToLower(f.Path), ".h") {
+			f.parserLang = "cpp"
+		}
 		switch {
 		case f.parserLang == "":
 			f.parseStatus = "unsupported"

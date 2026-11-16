@@ -8,11 +8,15 @@
 //! by a time budget, extraction by depth and count limits, and malformed
 //! input yields diagnostics rather than failures.
 
+mod cfamily;
 mod common;
+mod csharp;
 mod ecmascript;
 mod golang;
 mod java;
+mod kotlin;
 mod python;
+mod rust;
 
 pub use common::Limits;
 
@@ -68,6 +72,11 @@ pub fn parser_info(language: Language) -> ParserInfo {
         Language::Tsx => "tree-sitter-tsx@0.23",
         Language::Go => "tree-sitter-go@0.25",
         Language::Java => "tree-sitter-java@0.23",
+        Language::Csharp => "tree-sitter-c-sharp@0.23",
+        Language::Kotlin => "tree-sitter-kotlin-ng@1.1",
+        Language::Rust => "tree-sitter-rust@0.24",
+        Language::C => "tree-sitter-c@0.24",
+        Language::Cpp => "tree-sitter-cpp@0.23",
     };
     ParserInfo {
         name: grammar.to_string(),
@@ -97,6 +106,11 @@ pub fn parse(
         Language::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
         Language::Go => tree_sitter_go::LANGUAGE.into(),
         Language::Java => tree_sitter_java::LANGUAGE.into(),
+        Language::Csharp => tree_sitter_c_sharp::LANGUAGE.into(),
+        Language::Kotlin => tree_sitter_kotlin_ng::LANGUAGE.into(),
+        Language::Rust => tree_sitter_rust::LANGUAGE.into(),
+        Language::C => tree_sitter_c::LANGUAGE.into(),
+        Language::Cpp => tree_sitter_cpp::LANGUAGE.into(),
     };
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -139,6 +153,10 @@ pub fn parse(
         }
         Language::Go => golang::extract(root, source, options.limits),
         Language::Java => java::extract(root, source, options.limits),
+        Language::Csharp => csharp::extract(root, source, options.limits),
+        Language::Kotlin => kotlin::extract(root, source, options.limits),
+        Language::Rust => rust::extract(root, source, options.limits),
+        Language::C | Language::Cpp => cfamily::extract(root, source, language, options.limits),
     };
 
     Ok(FileIr {

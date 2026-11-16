@@ -5,14 +5,7 @@ use proptest::prelude::*;
 use usie_ir::{FileIr, Language};
 use usie_parser::{parse, ParseOptions};
 
-const LANGUAGES: [Language; 6] = [
-    Language::Python,
-    Language::Javascript,
-    Language::Typescript,
-    Language::Tsx,
-    Language::Go,
-    Language::Java,
-];
+const LANGUAGES: [Language; 11] = Language::ALL;
 
 fn check_invariants(ir: &FileIr, len: usize) {
     let in_bounds = |s: &usie_ir::Span| {
@@ -27,12 +20,19 @@ fn check_invariants(ir: &FileIr, len: usize) {
         if let Some(p) = sym.parent {
             assert!(p < sym.id, "parents precede children");
             let parent = &ir.symbols[p as usize];
-            assert_eq!(
-                sym.qualified_name,
-                format!("{}.{}", parent.qualified_name, sym.name)
-            );
+            let expected = match sym.attrs.get("receiver_type") {
+                Some(r) => format!(
+                    "{}.{}.{}",
+                    parent.qualified_name,
+                    r.as_str().unwrap(),
+                    sym.name
+                ),
+                None => format!("{}.{}", parent.qualified_name, sym.name),
+            };
+            assert_eq!(sym.qualified_name, expected);
         } else if let Some(receiver) = sym.attrs.get("receiver_type") {
-            // Go methods are declared at package level, qualified by receiver.
+            // Methods declared outside their type (Go, Rust impls, C++
+            // `C::m`) are qualified by the receiver.
             assert_eq!(
                 sym.qualified_name,
                 format!("{}.{}", receiver.as_str().unwrap(), sym.name)
@@ -97,6 +97,12 @@ fn fragment() -> impl Strategy<Value = String> {
         Just("@Ann(x = 1) void m(final T t, int... r) throws E { ".to_string()),
         Just("var x = new X<>() { void y() {} }; this.z().w(); super(a);".to_string()),
         Just("enum E { A(1) { }, B; } record R(int a) { R { } }".to_string()),
+        Just("namespace N { using X = A.B; [Attr] partial class C : I { public int P { get; set; } } }".to_string()),
+        Just("object O { fun f() = listOf(1).map { it } }\nclass K(val a: Int) : B(), I {".to_string()),
+        Just("impl<T: Clone> Tr for S<T> { fn m(&self) -> Self { Self::new() } }".to_string()),
+        Just("use a::{b::{self, c as d}, *}; mod m { pub(crate) struct S(u8); }".to_string()),
+        Just("#include \"x.h\"\n#define F(a) ((a) + 1)\ntypedef struct { int a; } T;\n".to_string()),
+        Just("namespace a::b { class C : public D { virtual void m() override; }; void C::m() {} }".to_string()),
         Just("=> {".to_string()),
         Just("}".to_string()),
         Just(")".to_string()),

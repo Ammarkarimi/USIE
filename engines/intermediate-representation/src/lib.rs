@@ -45,17 +45,27 @@ pub enum Language {
     Tsx,
     Go,
     Java,
+    Csharp,
+    Kotlin,
+    Rust,
+    C,
+    Cpp,
 }
 
 impl Language {
     /// Every language the engine parses, in a stable order.
-    pub const ALL: [Language; 6] = [
+    pub const ALL: [Language; 11] = [
         Language::Python,
         Language::Javascript,
         Language::Typescript,
         Language::Tsx,
         Language::Go,
         Language::Java,
+        Language::Csharp,
+        Language::Kotlin,
+        Language::Rust,
+        Language::C,
+        Language::Cpp,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -66,6 +76,11 @@ impl Language {
             Language::Tsx => "tsx",
             Language::Go => "go",
             Language::Java => "java",
+            Language::Csharp => "csharp",
+            Language::Kotlin => "kotlin",
+            Language::Rust => "rust",
+            Language::C => "c",
+            Language::Cpp => "cpp",
         }
     }
 
@@ -77,6 +92,11 @@ impl Language {
             "tsx" => Some(Language::Tsx),
             "go" => Some(Language::Go),
             "java" => Some(Language::Java),
+            "csharp" => Some(Language::Csharp),
+            "kotlin" => Some(Language::Kotlin),
+            "rust" => Some(Language::Rust),
+            "c" => Some(Language::C),
+            "cpp" => Some(Language::Cpp),
             _ => None,
         }
     }
@@ -90,6 +110,10 @@ impl Language {
             }
             Language::Go => LanguageFamily::Go,
             Language::Java => LanguageFamily::Java,
+            Language::Csharp => LanguageFamily::Csharp,
+            Language::Kotlin => LanguageFamily::Kotlin,
+            Language::Rust => LanguageFamily::Rust,
+            Language::C | Language::Cpp => LanguageFamily::C,
         }
     }
 }
@@ -101,6 +125,33 @@ pub enum LanguageFamily {
     Ecmascript,
     Go,
     Java,
+    Csharp,
+    Kotlin,
+    Rust,
+    /// C and C++, which share headers and linkage.
+    C,
+}
+
+impl LanguageFamily {
+    /// Families whose declarations carry types the resolver follows
+    /// (`attrs.type_path`, `local_types`, `result_types`, call chains).
+    pub fn is_statically_typed(&self) -> bool {
+        !matches!(self, LanguageFamily::Python | LanguageFamily::Ecmascript)
+    }
+
+    /// Prefix of this family's resolution rule identifiers.
+    pub fn rule_prefix(&self) -> &'static str {
+        match self {
+            LanguageFamily::Python => "py",
+            LanguageFamily::Ecmascript => "es",
+            LanguageFamily::Go => "go",
+            LanguageFamily::Java => "java",
+            LanguageFamily::Csharp => "csharp",
+            LanguageFamily::Kotlin => "kotlin",
+            LanguageFamily::Rust => "rust",
+            LanguageFamily::C => "c",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

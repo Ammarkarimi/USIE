@@ -33,6 +33,33 @@ pub struct ProjectConfig {
     /// Go modules defined in the repository (one per `go.mod`).
     #[serde(default)]
     pub go_modules: Vec<GoModule>,
+    /// Rust packages defined in the repository (one per `Cargo.toml` with a
+    /// `[package]` section).
+    #[serde(default)]
+    pub rust_crates: Vec<RustCrate>,
+    /// Directories passed to the compiler with `-I` (from CMake, Makefiles
+    /// or compile_commands.json), for C and C++ `#include` resolution.
+    #[serde(default)]
+    pub include_dirs: Vec<String>,
+    /// Namespaces a .NET project imports for all its files (`<Using
+    /// Include="N" />` in a project file).
+    #[serde(default)]
+    pub dotnet_usings: Vec<DotnetUsing>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DotnetUsing {
+    /// Directory of the project file.
+    pub dir: String,
+    pub namespace: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RustCrate {
+    /// Directory containing `Cargo.toml` ("" for the root).
+    pub dir: String,
+    /// The package name (as written; `-` is `_` in paths).
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +72,8 @@ pub struct GoModule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclaredDependency {
-    /// `npm`, `pypi`, `go` (module path) or `maven` (`group:artifact`).
+    /// `npm`, `pypi`, `go` (module path), `maven` (`group:artifact`),
+    /// `nuget` (package id) or `cargo` (crate name).
     pub ecosystem: String,
     pub name: String,
 }

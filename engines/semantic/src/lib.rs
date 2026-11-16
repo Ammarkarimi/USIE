@@ -9,19 +9,24 @@
 //! The rules are specified in `docs/specifications/semantic-resolution.md`.
 
 mod builtins;
+mod cfamily;
 mod golang;
 mod java;
 pub mod model;
 mod modules;
 mod paths;
+mod rust;
 
 pub use model::*;
 
+use cfamily::CIndex;
 use golang::{declared_type, is_type_kind, GoIndex};
-use java::JavaIndex;
+use java::{is_classic, JavaIndex};
 use modules::ModuleIndex;
+use rust::RustIndex;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{Mutex, OnceLock};
 use usie_ir::{
     Confidence, ExportKind, FileIr, ImportKind, LanguageFamily, ReferenceKind, Symbol, SymbolKind,
 };
@@ -47,6 +52,36 @@ pub fn dir_key(dir: &str) -> String {
 }
 
 pub(crate) type SymRef = (usize, u32);
+
+/// An interned rule identifier `<family prefix>.<suffix>`.
+pub(crate) fn family_rule(family: LanguageFamily, suffix: &str) -> &'static str {
+    intern(format!("{}.{suffix}", family.rule_prefix()))
+}
+
+fn intern(rule: String) -> &'static str {
+    // The set of rule identifiers is small and fixed by the code, so the
+    // interned strings are bounded.
+    static RULES: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    let mut set = RULES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(r) = set.get(rule.as_str()) {
+        return r;
+    }
+    let leaked: &'static str = Box::leak(rule.into_boxed_str());
+    set.insert(leaked);
+    leaked
+}
+
+/// `java.*` rules applied to a Kotlin or C# file are reported as
+/// `kotlin.*` / `csharp.*`.
+fn localize_rule(family: LanguageFamily, rule: &'static str) -> &'static str {
+    match (family, rule.strip_prefix("java.")) {
+        (LanguageFamily::Kotlin | LanguageFamily::Csharp, Some(rest)) => family_rule(family, rest),
+        _ => rule,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Target {
@@ -126,6 +161,8 @@ pub(crate) struct Resolver<'a> {
     pub modules: ModuleIndex<'a>,
     pub(crate) go: GoIndex,
     pub(crate) java: JavaIndex,
+    pub(crate) rust: RustIndex,
+    pub(crate) c: CIndex,
     methods_by_name: HashMap<(LanguageFamily, &'a str), Vec<SymRef>>,
     bases: RefCell<HashMap<SymRef, Vec<SymRef>>>,
     /// Memoized module-surface lookups, keyed by (file, name). `None` marks a
@@ -200,11 +237,15 @@ impl<'a> Resolver<'a> {
         let modules = ModuleIndex::new(&project.config, &files);
         let go = GoIndex::new(&project.config, &files);
         let java = JavaIndex::new(&project.config, &files);
+        let rust = RustIndex::new(&project.config, &files);
+        let c = CIndex::new(&project.config, &files);
         let mut resolver = Resolver {
             files,
             modules,
             go,
             java,
+            rust,
+            c,
             methods_by_name,
             bases: RefCell::new(HashMap::new()),
             surface_memo: RefCell::new(HashMap::new()),
@@ -214,6 +255,8 @@ impl<'a> Resolver<'a> {
             refs: Vec::new(),
         };
         resolver.go_bind_imports();
+        resolver.rust_bind_impls();
+        resolver.c_bind_methods();
         resolver
     }
 
@@ -225,6 +268,7 @@ impl<'a> Resolver<'a> {
         for fi in 0..self.files.len() {
             self.heritage(fi);
         }
+        self.rust_impl_edges();
         for fi in 0..self.files.len() {
             self.imports(fi);
         }
@@ -350,12 +394,24 @@ impl<'a> Resolver<'a> {
                     } else {
                         self.lookup(fi, sym.parent, &base.segments)
                     };
+                    let mut kind = kind;
+                    let mut label = label;
                     if let Ok(Found {
                         target: Target::Symbol(tf, tid),
                         ..
                     }) = &res
                     {
                         let target_kind = self.files[*tf].ir.symbols[*tid as usize].kind;
+                        // A C# base list names the base class and the
+                        // implemented interfaces alike.
+                        if kind == "EXTENDS"
+                            && target_kind == SymbolKind::Interface
+                            && sym.kind == SymbolKind::Class
+                            && self.files[fi].family == LanguageFamily::Csharp
+                        {
+                            kind = "IMPLEMENTS";
+                            label = "implements";
+                        }
                         if matches!(target_kind, SymbolKind::Class | SymbolKind::Interface)
                             && (*tf, *tid) != (fi, sym.id)
                         {
@@ -387,15 +443,19 @@ impl<'a> Resolver<'a> {
         let family = self.files[fi].family;
         for (idx, imp) in ir.imports.iter().enumerate() {
             let text = match (family, imp.kind) {
-                (LanguageFamily::Java, ImportKind::Wildcard) => format!("{}.*", imp.module),
-                (LanguageFamily::Java, _) if !imp.module.is_empty() => {
+                (f, ImportKind::Wildcard) if is_classic(f) => format!("{}.*", imp.module),
+                (f, _) if is_classic(f) && !imp.module.is_empty() => {
                     format!("{}.{}", imp.module, imp.imported.as_deref().unwrap_or(""))
                 }
                 _ => format!("{}{}", ".".repeat(imp.level as usize), imp.module),
             };
             let res = match family {
                 LanguageFamily::Go => self.go_import(fi, idx),
-                LanguageFamily::Java => self.java_import(fi, idx),
+                LanguageFamily::Java | LanguageFamily::Kotlin | LanguageFamily::Csharp => {
+                    self.java_import(fi, idx)
+                }
+                LanguageFamily::Rust => self.rust_import(fi, idx),
+                LanguageFamily::C => self.c_include(fi, idx),
                 LanguageFamily::Ecmascript => self.es_module(fi, &imp.module),
                 LanguageFamily::Python => {
                     let module = self.py_module(fi, &imp.module, imp.level);
@@ -488,7 +548,7 @@ impl<'a> Resolver<'a> {
                 LanguageFamily::Ecmascript => self.es_export(fi, &exp.name, 0),
                 LanguageFamily::Python => self.py_attr(fi, &exp.name, 0),
                 // Export status is syntactic (`exported`); no export lists.
-                LanguageFamily::Go | LanguageFamily::Java => continue,
+                _ => continue,
             };
             if let Ok(Found {
                 target: Target::Symbol(tf, tid),
@@ -550,6 +610,28 @@ impl<'a> Resolver<'a> {
                         "a module object is not callable",
                     )),
                 };
+            }
+            // `[Serializable]` names the class `SerializableAttribute`; that
+            // name is preferred when it resolves.
+            if r.kind == ReferenceKind::Decorator
+                && family == LanguageFamily::Csharp
+                && !r.path.is_empty()
+                && !r.path.last().is_some_and(|l| l.ends_with("Attribute"))
+            {
+                let mut path = r.path.clone();
+                if let Some(last) = path.last_mut() {
+                    last.push_str("Attribute");
+                }
+                match self.lookup(fi, r.scope, &path) {
+                    Ok(
+                        found @ Found {
+                            target: Target::Symbol(..),
+                            ..
+                        },
+                    ) => res = Ok(found),
+                    Ok(found) if res.is_err() => res = Ok(found),
+                    _ => {}
+                }
             }
             if let Err(miss) = &res {
                 if miss.unknown_receiver {
@@ -640,6 +722,19 @@ impl<'a> Resolver<'a> {
         let source = match scope {
             Some(s) => self.files[fi].keys[s as usize].clone(),
             None => file_key(path),
+        };
+        // Rules shared by the JVM and .NET languages are reported under the
+        // referencing file's language.
+        let family = self.files[fi].family;
+        let res = match res {
+            Ok(found) => Ok(Found {
+                rule: localize_rule(family, found.rule),
+                ..found
+            }),
+            Err(miss) => Err(Miss {
+                rule: localize_rule(family, miss.rule),
+                ..miss
+            }),
         };
         let rec = match res {
             Ok(found) => {
@@ -752,13 +847,31 @@ impl<'a> Resolver<'a> {
     /// A member of a class or interface, searching resolved base classes.
     /// The flag reports whether the member was inherited.
     fn member(&self, class: SymRef, name: &str, depth: u32) -> Option<(SymRef, bool)> {
+        // A C++ member function defined outside its class: the definition
+        // is the call target, not the in-class declaration.
+        if self.files[class.0].family == LanguageFamily::C {
+            if let Some(m) = self.c_method(class, name) {
+                return Some((m, false));
+            }
+        }
         if let Some(id) = self.child_named(class.0, class.1, name) {
             return Some(((class.0, id), false));
         }
-        if self.files[class.0].family == LanguageFamily::Go {
-            if let Some(m) = self.go_method(class, name) {
-                return Some((m, false));
+        // The other parts of a C# `partial` or Kotlin `expect`/`actual` type.
+        if let Some(parts) = self.java.parts.get(&class) {
+            for part in parts.iter().filter(|p| **p != class) {
+                if let Some(id) = self.child_named(part.0, part.1, name) {
+                    return Some(((part.0, id), false));
+                }
             }
+        }
+        let found = match self.files[class.0].family {
+            LanguageFamily::Go => self.go_method(class, name),
+            LanguageFamily::Rust => self.rust_method(class, name),
+            _ => None,
+        };
+        if let Some(m) = found {
+            return Some((m, false));
         }
         self.inherited_member(class, name, depth)
     }
@@ -820,7 +933,11 @@ impl<'a> Resolver<'a> {
     pub(crate) fn lookup(&self, fi: usize, scope: Option<u32>, path: &[String]) -> Res {
         match self.files[fi].family {
             LanguageFamily::Go => return self.go_lookup(fi, scope, path),
-            LanguageFamily::Java => return self.java_lookup(fi, scope, path),
+            LanguageFamily::Java | LanguageFamily::Kotlin | LanguageFamily::Csharp => {
+                return self.java_lookup(fi, scope, path)
+            }
+            LanguageFamily::Rust => return self.rust_lookup(fi, scope, path),
+            LanguageFamily::C => return self.c_lookup(fi, scope, path),
             _ => {}
         }
         let file = &self.files[fi];
@@ -1043,16 +1160,32 @@ impl<'a> Resolver<'a> {
                 Target::Symbol(f, id) => {
                     let sym = self.sym((f, id));
                     let family = self.files[f].family;
-                    let typed = matches!(family, LanguageFamily::Go | LanguageFamily::Java);
+                    let typed = family.is_statically_typed();
                     if typed && sym.kind == SymbolKind::Variable {
+                        // `val repo = Repo()`: the type of the initializer.
+                        if declared_type(sym).is_none() {
+                            if let Some(call) = sym.attrs.get("init_call") {
+                                let rule = family_rule(family, "call-result");
+                                if let Some(res) = self.call_value(
+                                    f,
+                                    sym.parent,
+                                    &sym.name,
+                                    call,
+                                    &rest[i..],
+                                    rule,
+                                ) {
+                                    let found = res?;
+                                    return Ok(Found {
+                                        confidence: found.confidence.min(cur.confidence),
+                                        ..found
+                                    });
+                                }
+                            }
+                        }
                         if let Some(ty) = declared_type(sym) {
                             // A field or variable of a declared type: members
                             // of the type.
-                            let rule = if family == LanguageFamily::Go {
-                                "go.typed-value"
-                            } else {
-                                "java.typed-value"
-                            };
+                            let rule = family_rule(family, "typed-value");
                             let found =
                                 self.typed_value(f, sym.parent, &sym.name, &ty, &rest[i..], rule)?;
                             return Ok(Found {
@@ -1061,10 +1194,19 @@ impl<'a> Resolver<'a> {
                             });
                         }
                     }
+                    if family == LanguageFamily::Rust && sym.kind == SymbolKind::Namespace {
+                        let found = self.rust_module_member(rust::ModRef::Ns(f, id), seg)?;
+                        cur = Found {
+                            confidence: found.confidence.min(cur.confidence),
+                            rule: cur.rule,
+                            ..found
+                        };
+                        continue;
+                    }
                     let has_members = matches!(
                         sym.kind,
                         SymbolKind::Class | SymbolKind::Interface | SymbolKind::Namespace
-                    ) || (family == LanguageFamily::Go
+                    ) || (family.is_statically_typed()
                         && sym.kind == SymbolKind::Type);
                     if !has_members {
                         return Err(Miss::receiver(
@@ -1087,7 +1229,7 @@ impl<'a> Resolver<'a> {
                             rule: cur.rule,
                         },
                         None => {
-                            if family == LanguageFamily::Java {
+                            if is_classic(family) {
                                 if let Some(found) = self.java_external_base((f, id), 0) {
                                     return Ok(found);
                                 }
@@ -1106,6 +1248,9 @@ impl<'a> Resolver<'a> {
                     let found = match self.files[tf].family {
                         LanguageFamily::Ecmascript => self.es_export(tf, seg, 0)?,
                         LanguageFamily::Python => self.py_attr(tf, seg, 0)?,
+                        LanguageFamily::Rust => {
+                            self.rust_module_member(rust::ModRef::File(tf), seg)?
+                        }
                         _ => {
                             return Err(Miss::new(
                                 "member.file",
@@ -1149,11 +1294,7 @@ impl<'a> Resolver<'a> {
     /// Follow a call chain (`Reference::chain`) through declared result types.
     fn resolve_chain(&self, fi: usize, scope: Option<u32>, chain: &[String]) -> Res {
         let family = self.files[fi].family;
-        let rule = if family == LanguageFamily::Go {
-            "go.call-result"
-        } else {
-            "java.call-result"
-        };
+        let rule = family_rule(family, "call-result");
         let mut found: Option<Found> = None;
         let mut value: Option<(Found, String)> = None;
         let mut i = 0;
@@ -1273,6 +1414,20 @@ impl<'a> Resolver<'a> {
     ) -> Option<Res> {
         let sym = &self.files[fi].ir.symbols[scope as usize];
         let call = sym.attrs.get("local_calls")?.get(name)?;
+        self.call_value(fi, Some(scope), name, call, rest, rule)
+    }
+
+    /// The value of a call described by `{callee, result}`, looked up from
+    /// `scope` of file `fi`, accessed with `rest`.
+    fn call_value(
+        &self,
+        fi: usize,
+        scope: Option<u32>,
+        name: &str,
+        call: &serde_json::Value,
+        rest: &[String],
+        rule: &'static str,
+    ) -> Option<Res> {
         let callee: Vec<String> = call
             .get("callee")?
             .as_array()?
@@ -1297,7 +1452,7 @@ impl<'a> Resolver<'a> {
             )));
         }
         self.call_depth.set(self.call_depth.get() + 1);
-        let callee_res = self.lookup(fi, Some(scope), &callee);
+        let callee_res = self.lookup(fi, scope, &callee);
         self.call_depth.set(self.call_depth.get() - 1);
         let family = self.files[fi].family;
         let res = match callee_res {
@@ -1423,8 +1578,56 @@ impl<'a> Resolver<'a> {
         };
         let seg = rest[0].as_str();
         let type_sym = self.sym((tf, tid));
+        // A type alias (`type A = B`, `typedef B A`): members of the aliased
+        // type. Defined types (`type A B` in Go) have their own method set.
+        if type_sym.kind == SymbolKind::Type
+            && type_sym.attrs.get("type_kind").and_then(|v| v.as_str()) != Some("defined")
+            && self.member((tf, tid), seg, 0).is_none()
+        {
+            if let Some(underlying) = type_sym
+                .attrs
+                .get("underlying")
+                .and_then(|u| u.as_array())
+                .map(|u| {
+                    u.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect::<Vec<_>>()
+                })
+                .filter(|u| !u.is_empty())
+            {
+                if self.call_depth.get() < 8 {
+                    self.call_depth.set(self.call_depth.get() + 1);
+                    let target = self.lookup(tf, type_sym.parent, &underlying);
+                    self.call_depth.set(self.call_depth.get() - 1);
+                    match target {
+                        Ok(t) if t.target != resolved.target => {
+                            let confidence = t.confidence.min(resolved.confidence);
+                            let t = Found { confidence, ..t };
+                            return self.typed_member(
+                                family,
+                                t,
+                                name,
+                                &underlying.join("."),
+                                rest,
+                                rule,
+                            );
+                        }
+                        Err(miss) if miss.builtin => return Err(miss),
+                        _ => {}
+                    }
+                }
+            }
+        }
         let Some((m, inherited)) = self.member((tf, tid), seg, 0) else {
-            if family == LanguageFamily::Java {
+            if is_classic(family) {
+                if let Some(found) = self.java_extension((tf, tid), seg) {
+                    let confidence = found.confidence.min(resolved.confidence);
+                    let found = Found {
+                        confidence,
+                        ..found
+                    };
+                    return self.descend(found, &rest[1..]);
+                }
                 if let Some(found) = self.java_external_base((tf, tid), 0) {
                     return Ok(found);
                 }
@@ -1438,7 +1641,8 @@ impl<'a> Resolver<'a> {
             ));
         };
         let confidence = match family {
-            LanguageFamily::Java => self.java_member_confidence(m, inherited),
+            f if is_classic(f) => self.java_member_confidence(m, inherited),
+            LanguageFamily::C => self.c_member_confidence(m, inherited),
             // Go method sets are static; calls through interfaces and
             // promoted members of embedded fields are not.
             _ if inherited || type_sym.kind == SymbolKind::Interface => Confidence::Probable,
@@ -1479,7 +1683,11 @@ impl<'a> Resolver<'a> {
         let imp = &self.files[fi].ir.imports[import];
         match self.files[fi].family {
             LanguageFamily::Go => self.go_import(fi, import),
-            LanguageFamily::Java => self.java_import(fi, import),
+            LanguageFamily::Java | LanguageFamily::Kotlin | LanguageFamily::Csharp => {
+                self.java_import(fi, import)
+            }
+            LanguageFamily::Rust => self.rust_import(fi, import),
+            LanguageFamily::C => self.c_include(fi, import),
             LanguageFamily::Ecmascript => {
                 let module = self.es_module(fi, &imp.module)?;
                 let Target::File(tf) = module.target else {
@@ -1567,7 +1775,7 @@ impl<'a> Resolver<'a> {
 
     /// Memoize a module-surface lookup and break cycles. A lookup that
     /// re-enters itself is a cyclic import chain and resolves to nothing.
-    fn memoized(&self, fi: usize, name: &str, compute: impl FnOnce() -> Res) -> Res {
+    pub(crate) fn memoized(&self, fi: usize, name: &str, compute: impl FnOnce() -> Res) -> Res {
         let key = (fi, name.to_string());
         match self.surface_memo.borrow().get(&key) {
             Some(Some(res)) => return res.clone(),

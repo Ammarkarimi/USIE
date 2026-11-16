@@ -23,14 +23,17 @@ FileIr
                 anonymous_locals, truncated, export_assignment, package
 ```
 
-Languages: `python`, `javascript`, `typescript`, `tsx`, `go`, `java`.
+Languages: `python`, `javascript`, `typescript`, `tsx`, `go`, `java`,
+`csharp`, `kotlin`, `rust`, `c`, `cpp`.
 
 Invariants (checked by property tests over random bytes and random
 source-like text, and re-validated by `usie-engine resolve` on input):
 
 - symbol ids are dense and in order; a parent precedes its children;
 - `qualified_name` is the parent's qualified name plus `.name` (exception:
-  Go methods are package-level symbols qualified as `Receiver.name`);
+  methods declared outside their type — Go methods, Rust `impl` methods,
+  C++ `C::m` definitions — are qualified as `Receiver.name` within their
+  parent);
 - every span lies inside the file; line numbers are 1-based, columns are
   0-based byte offsets;
 - `scope` fields refer to existing symbols;
@@ -63,7 +66,16 @@ Symbol attributes used by Go and Java resolution:
 | `result_types` | functions, methods | declared result types by position (`null` where not a named type) |
 | `receiver_type`, `receiver_name` | Go methods | the receiver's type name and variable |
 | `type_kind` | types | Go: `struct`, `interface`, `defined`, `alias`; Java: `class`, `interface`, `enum`, `record`, `annotation` |
-| `modifiers`, `annotations`, `static`, `constructor`, `abstract` | Java declarations | as written |
+| `modifiers`, `annotations`, `static`, `constructor`, `abstract` | Java, Kotlin, C# declarations | as written |
+| `init_call` | Kotlin properties | `{callee, result}` of the initializer, when the type is not declared |
+| `extension_receiver` | C# extension methods, Kotlin extension functions | receiver type segments |
+| `impl_type`, `impl_trait` | Rust `impl` methods, C++ out-of-class definitions (`impl_type` only) | the self type and trait paths |
+| `declaration`, `virtual`, `macro` | C/C++ | a prototype or member declaration without body; a virtual member; a `#define` |
+| `underlying` | type aliases (Go, Rust, C/C++) | segments of the aliased type, followed for member lookup |
+
+Imports in C and C++ are `#include` directives (`SideEffect`, `level` 1 for
+`<...>`) and `using` declarations; a C# `global using` has `level` 1. Rust
+references write a module-path `self` as `mod:self`.
 
 File attribute `package` holds the Go package clause or the Java package
 declaration.

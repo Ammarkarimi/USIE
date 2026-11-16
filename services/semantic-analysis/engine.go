@@ -180,6 +180,9 @@ type ResolveConfig struct {
 	Packages     any                  `json:"packages"`
 	PythonRoots  []string             `json:"python_roots"`
 	GoModules    any                  `json:"go_modules"`
+	RustCrates   any                  `json:"rust_crates"`
+	IncludeDirs  []string             `json:"include_dirs"`
+	DotnetUsings any                  `json:"dotnet_usings"`
 }
 
 type DeclaredDependency struct {
@@ -272,6 +275,15 @@ func (e Engine) Resolve(ctx context.Context, cfg ResolveConfig, files []ResolveF
 	}
 	if isNil(cfg.GoModules) {
 		cfg.GoModules = []any{}
+	}
+	if isNil(cfg.RustCrates) {
+		cfg.RustCrates = []any{}
+	}
+	if isNil(cfg.DotnetUsings) {
+		cfg.DotnetUsings = []any{}
+	}
+	if cfg.IncludeDirs == nil {
+		cfg.IncludeDirs = []string{}
 	}
 	if isNil(cfg.Packages) {
 		cfg.Packages = []any{}

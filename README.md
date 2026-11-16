@@ -20,9 +20,9 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Capability | Status | Notes |
 |---|---|---|
 | Repository ingestion | **implemented** | Git over HTTPS (branch, tag or commit), ZIP upload, server-local directories under allowed roots. Hashing, classification, encoding, generated/vendored detection, ignore files, manifests, build systems, commits and branches, incremental re-analysis with a parse cache. |
-| Parsing | **implemented** for Python, JavaScript, TypeScript, TSX, Go, Java | tree-sitter, time- and size-bounded, syntax errors reported as diagnostics. |
-| Language detection | **implemented** for Python, JavaScript, TypeScript, Java, C, C++, Rust, Go, C#, Kotlin and common formats | Languages without a parser are inventoried, not analyzed. |
-| Semantic resolution | **implemented** | Imports, exports, calls, instantiation, inheritance, JSX, decorator and annotation references across files, with confidence and provenance. Go: packages, `go.mod` modules, `vendor/`, methods across files, embedding. Java: fully qualified types, single/on-demand/static imports, inheritance. For Go and Java, calls also follow the declared types of variables, fields and call results. [Specification](docs/specifications/semantic-resolution.md). |
+| Parsing | **implemented** for Python, JavaScript, TypeScript, TSX, Go, Java, Kotlin, C#, Rust, C, C++ | tree-sitter, time- and size-bounded, syntax errors reported as diagnostics. |
+| Language detection | **implemented** for the languages above and common formats | Formats without a parser (shell, SQL, YAML, …) are inventoried, not analyzed. |
+| Semantic resolution | **implemented** | Imports, exports, calls, instantiation, inheritance, JSX, decorator and annotation references across files, with confidence and provenance. Go: packages, `go.mod` modules, `vendor/`, methods across files, embedding. Java, Kotlin, C#: fully qualified types, imports and usings, inheritance, partial types, extension methods. Rust: crates, module tree, `use`, `impl` blocks, traits. C/C++: `#include` resolution, declarations vs definitions, namespaces, out-of-class methods. For the statically typed languages, calls also follow the declared types of variables, fields and call results. [Specification](docs/specifications/semantic-resolution.md). |
 | Knowledge graph | **implemented** | Immutable snapshot per version in PostgreSQL; search, bounded traversal with confidence filtering, file import graph, snapshot diff. |
 | Web interface | **implemented** | Overview, repositories, analysis results, version comparison, dependencies, history, code browser with symbols and resolved/unresolved references, graph explorer, jobs, workers, API tokens, audit log. Light and dark themes. |
 | REST API | **implemented** | [OpenAPI 3](services/api-gateway/openapi.yaml), typed TypeScript SDK in `packages/sdk`. |
@@ -30,7 +30,6 @@ same status at `GET /api/v1/system` and on its Settings page.
 | Job orchestration | **implemented** | PostgreSQL queue with leases, heartbeats, retries, cancellation; horizontally scalable workers. |
 | Change impact | **experimental** | "Dependents" view: reverse reachability through calls, imports and inheritance. No risk scoring. |
 | Distributed execution | **experimental** | Several workers share one queue. No sandboxed build/test execution. |
-| Parsers for C#, Kotlin, Rust, C, C++ | **planned** | Next in that order. Files are detected and inventoried. |
 | AI reasoning | **experimental** | Ask questions about an analyzed version. Answers come from knowledge-graph evidence; every claim is shown as cited, inference or unsupported after the server checks its citations. Needs `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`); off otherwise. [Design](docs/adr/0009-ai-reasoning.md). |
 | Transformation, verification | **planned** | No code exists for these. |
 | Neo4j, Kafka, Temporal, Redis, Kubernetes | **planned / deferred** | See the [ADRs](docs/adr/README.md) for why each is not used yet. |
@@ -68,13 +67,26 @@ reported unresolved with a reason. These numbers come from the analysis
 statistics shown on the repository page; they vary by codebase and say
 nothing about other repositories.
 
-For Go and Java, measured with the engine's `analyze_dir` example on the
-same machine:
+For the statically typed languages, measured with the engine's
+`analyze_dir` example on the same machine (repositories as of November
+2026):
 
 | Corpus | Files | References | Resolved in repo | External | Builtin | Unresolved | Time |
 |---|---|---|---|---|---|---|---|
 | this repository's Go code | 49 | 4,912 | 29.7% | 48.4% | 10.4% | 11.4% | 0.16 s |
 | [google/gson](https://github.com/google/gson) (Java) | 268 | 30,092 | 43.1% | 34.1% | 7.8% | 14.9% | 0.66 s |
+| [lua/lua](https://github.com/lua/lua) (C) | 68 | 9,286 | 93.7% | 1.7% | 3.3% | 1.3% | 0.28 s |
+| this repository's Rust engine | 30 | 8,469 | 36.0% | 11.2% | 19.8% | 33.0% | 0.18 s |
+| [App-vNext/Polly](https://github.com/App-vNext/Polly) (C#) | 803 | 38,940 | 23.3% | 31.5% | 5.8% | 39.4% | 1.6 s |
+| [JakeWharton/timber](https://github.com/JakeWharton/timber) (Kotlin) | 12 | 1,651 | 29.0% | 33.3% | 3.4% | 34.3% | 0.05 s |
+| [nlohmann/json](https://github.com/nlohmann/json) (C++) | 635 | 92,523 | 29.6% | 15.8% | 5.1% | 49.6% | 4.6 s |
+
+The languages differ in how much a static analysis without a compiler can
+establish. In Rust, C#, Kotlin and Java test code, many unresolved
+references are values whose types the compiler infers (closure and lambda
+parameters, `let` bindings) or values returned by libraries; nlohmann/json
+opens its namespaces through preprocessor macros, which USIE does not
+expand.
 
 In Gson, 89% of the unresolved references are calls on values returned by
 code outside the repository (for example `assertThat(x).isEqualTo(y)`), whose
@@ -90,7 +102,7 @@ build): 3.5 s to parse, 5.0 s to resolve.
 ```
 engines/                     Rust workspace
   intermediate-representation  normalized per-file IR
-  parser                       tree-sitter extraction (Python, JS/TS/TSX, Go, Java)
+  parser                       tree-sitter extraction (11 languages)
   semantic                     cross-file resolution
   cli                          usie-engine process (NDJSON protocol)
 services/                    Go services (one module)
@@ -116,11 +128,14 @@ make test   # everything below
 make lint   # rustfmt, clippy -D warnings, gofmt, go vet, golangci-lint
 ```
 
-- **Rust** (52 tests): extraction behaviour per language, property tests over
+- **Rust** (57 tests): extraction behaviour per language, property tests over
   arbitrary bytes and source-like text, resolver scenarios (packages, path
   aliases, workspaces, CommonJS, shadowing, inheritance, ambiguity, cycles,
   determinism; Go modules, vendoring, build variants, embedding, interfaces;
-  Java imports, static imports, inheritance, typed locals and call chains),
+  Java imports, static imports, inheritance, typed locals and call chains;
+  Kotlin final-by-default dispatch; C# namespaces, usings and partial
+  types; Rust modules, `use`, impls and traits; C includes, declarations
+  and definitions; C++ namespaces, out-of-class methods and virtual calls),
   and process-level tests of the engine protocol including path-escape
   refusal.
 - **Go**: ingestion (classification, ignore rules, symlinks, limits, git URL

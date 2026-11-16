@@ -1,4 +1,5 @@
-//! Debug helper: parse and resolve every Go and Java file under a directory
+//! Debug helper: parse and resolve every Go, Java, C#, Kotlin, Rust, C and C++
+//! file under a directory
 //! and print resolution statistics plus a sample of unresolved references.
 //!
 //! `cargo run --release -p usie-semantic --example analyze_dir -- <dir> [go-module-path]`
@@ -47,11 +48,73 @@ fn main() {
             path: module.clone(),
         });
     }
+    // Rust packages: `name = "..."` in the `[package]` table of Cargo.toml.
+    for p in &paths {
+        if p.ends_with("Cargo.toml") {
+            let text = std::fs::read_to_string(root.join(p)).unwrap_or_default();
+            let mut in_package = false;
+            for line in text.lines() {
+                let line = line.trim();
+                if line.starts_with('[') {
+                    in_package = line == "[package]";
+                } else if in_package && line.starts_with("name") {
+                    if let Some(name) = line.split('"').nth(1) {
+                        let dir = p
+                            .strip_suffix("Cargo.toml")
+                            .unwrap_or("")
+                            .trim_end_matches('/');
+                        config.rust_crates.push(usie_semantic::RustCrate {
+                            dir: dir.to_string(),
+                            name: name.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    // .NET project files: `<Using Include="N" />` and package references.
+    for p in &paths {
+        if p.ends_with(".csproj") {
+            let text = std::fs::read_to_string(root.join(p)).unwrap_or_default();
+            let dir = p.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+            for part in text.split('<').skip(1) {
+                let attr = |name: &str| {
+                    part.split(&format!("{name}=\""))
+                        .nth(1)
+                        .and_then(|r| r.split('"').next())
+                };
+                if part.starts_with("Using ")
+                    && !part.contains("Static=")
+                    && !part.contains("Alias=")
+                {
+                    if let Some(ns) = attr("Include") {
+                        config.dotnet_usings.push(usie_semantic::DotnetUsing {
+                            dir: dir.to_string(),
+                            namespace: ns.to_string(),
+                        });
+                    }
+                } else if part.starts_with("PackageReference ") {
+                    if let Some(id) = attr("Include") {
+                        config.dependencies.push(usie_semantic::DeclaredDependency {
+                            ecosystem: "nuget".into(),
+                            name: id.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
     let mut files = Vec::new();
     for p in &paths {
         let lang = match p.rsplit('.').next() {
             Some("go") => Language::Go,
             Some("java") => Language::Java,
+            Some("cs") => Language::Csharp,
+            Some("kt") => Language::Kotlin,
+            Some("rs") => Language::Rust,
+            Some("c") => Language::C,
+            Some("h") => Language::C,
+            Some("cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx") => Language::Cpp,
             _ => continue,
         };
         let src = std::fs::read(root.join(p)).unwrap();

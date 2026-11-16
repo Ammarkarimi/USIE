@@ -39,7 +39,7 @@ func TestDetectLanguage(t *testing.T) {
 			t.Errorf("DetectLanguage(%q) = %q, want %q", p, got, want)
 		}
 	}
-	for p, want := range map[string]string{"a.py": "python", "a.tsx": "tsx", "a.ts": "typescript", "a.d.ts": "typescript", "a.cjs": "javascript", "a.go": "go", "A.java": "java", "a.rs": "", "a.kt": ""} {
+	for p, want := range map[string]string{"a.py": "python", "a.tsx": "tsx", "a.ts": "typescript", "a.d.ts": "typescript", "a.cjs": "javascript", "a.go": "go", "A.java": "java", "a.rs": "rust", "a.kt": "kotlin", "A.cs": "csharp", "a.c": "c", "a.h": "c", "a.cpp": "cpp", "a.hpp": "cpp", "a.swift": ""} {
 		if got := ParserLanguage(p); got != want {
 			t.Errorf("ParserLanguage(%q) = %q, want %q", p, got, want)
 		}
@@ -217,6 +217,10 @@ func TestManifests(t *testing.T) {
 	c.Add("pom.xml", []byte(`<project><dependencies><dependency><groupId>org.x</groupId><artifactId>y</artifactId><version>1.0</version><scope>test</scope></dependency></dependencies></project>`))
 	c.Add("svc/go.mod", []byte("module \"example.com/svc\" // the service\n"))
 	c.Add("app/build.gradle", []byte("dependencies {\n    implementation 'com.google.guava:guava:33.0.0-jre'\n    testImplementation(\"junit:junit:4.13.2\")\n    compileOnly \"org.projectlombok:lombok:1.18.30\"\n    implementation project(':core')\n    implementation libs.okhttp\n}\n"))
+	c.Add("crates/core/Cargo.toml", []byte("[package]\nname = \"shop-core\"\n\n[dependencies]\nanyhow = \"1\"\n"))
+	c.Add("src/App/App.csproj", []byte(`<Project><ItemGroup><PackageReference Include="Newtonsoft.Json" Version="13.0.3" /><Using Include="Acme.Utils" /><Using Include="X" Static="true" /></ItemGroup></Project>`))
+	c.Add("native/CMakeLists.txt", []byte("project(x)\ninclude_directories(include ${CMAKE_CURRENT_SOURCE_DIR}/third_party ${SOME_VAR}/x)\ntarget_include_directories(lib PUBLIC src)\n"))
+	c.Add("native/Makefile", []byte("CFLAGS = -Wall -Iinclude -I ../outside -I/usr/include\n"))
 	c.Add("broken/package.json", []byte(`{not json`))
 	c.Add("CMakeLists.txt", nil)
 	f := c.Facts()
@@ -232,6 +236,7 @@ func TestManifests(t *testing.T) {
 		"cargo:proptest:dev": "1", "maven:org.x:y:dev": "1.0",
 		"maven:com.google.guava:guava:runtime": "33.0.0-jre", "maven:junit:junit:dev": "4.13.2",
 		"maven:org.projectlombok:lombok:build": "1.18.30",
+		"cargo:anyhow:runtime":                 "1", "nuget:Newtonsoft.Json:runtime": "13.0.3",
 	}
 	for k, v := range want {
 		if g, ok := got[k]; !ok || g != v {
@@ -244,7 +249,19 @@ func TestManifests(t *testing.T) {
 	if len(f.GoModules) != 2 || f.GoModules[0] != (GoModule{Dir: "", Path: "x"}) || f.GoModules[1] != (GoModule{Dir: "svc", Path: "example.com/svc"}) {
 		t.Errorf("go modules: %+v", f.GoModules)
 	}
-	if strings.Join(f.BuildSystems, ",") != "cargo,cmake,go,gradle,maven,npm,python" {
+	if len(f.RustCrates) != 1 || f.RustCrates[0] != (RustCrate{Dir: "crates/core", Name: "shop-core"}) {
+		t.Errorf("rust crates: %+v", f.RustCrates)
+	}
+	if len(f.DotnetUsings) != 1 || f.DotnetUsings[0] != (DotnetUsing{Dir: "src/App", Namespace: "Acme.Utils"}) {
+		t.Errorf("dotnet usings: %+v", f.DotnetUsings)
+	}
+	if strings.Join(f.IncludeDirs, ",") != "native/include,native/third_party,native/src,outside" {
+		t.Errorf("include dirs: %v", f.IncludeDirs)
+	}
+	if !CppHeaders([]string{"a.h", "b.cpp"}) || CppHeaders([]string{"a.h", "b.c"}) {
+		t.Error("CppHeaders")
+	}
+	if strings.Join(f.BuildSystems, ",") != "cargo,cmake,dotnet,go,gradle,make,maven,npm,python" {
 		t.Errorf("build systems: %v", f.BuildSystems)
 	}
 	if len(f.TsConfigs) != 1 || f.TsConfigs[0].Dir != "web" || *f.TsConfigs[0].BaseURL != "." || f.TsConfigs[0].Paths["@/*"][0] != "src/*" {

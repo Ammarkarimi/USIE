@@ -67,6 +67,30 @@ func ParserLanguage(p string) string {
 		return "go"
 	case ".java":
 		return "java"
+	case ".cs":
+		return "csharp"
+	case ".kt", ".kts":
+		return "kotlin"
+	case ".rs":
+		return "rust"
+	case ".c", ".h":
+		// `.h` headers are parsed as C++ when the repository has C++
+		// sources; see CppHeaders.
+		return "c"
+	case ".cc", ".cpp", ".cxx", ".c++", ".hh", ".hpp", ".hxx", ".h++", ".ipp", ".tpp":
+		return "cpp"
 	}
 	return ""
+}
+
+// CppHeaders reports whether `.h` headers should be parsed as C++: the
+// repository contains C++ sources, and the extension alone cannot tell.
+func CppHeaders(paths []string) bool {
+	for _, p := range paths {
+		switch strings.ToLower(path.Ext(p)) {
+		case ".cc", ".cpp", ".cxx", ".c++", ".hpp", ".hh", ".hxx":
+			return true
+		}
+	}
+	return false
 }

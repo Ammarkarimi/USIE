@@ -26,8 +26,8 @@ func (s *Server) getOpenAPI(w http.ResponseWriter, _ *http.Request, _ *store.Pri
 // has to guess what is real. Keep in sync with README.md.
 var features = []map[string]string{
 	{"id": "repository-ingestion", "status": "implemented", "detail": "Git (HTTPS), local directories and ZIP uploads; classification, hashing, manifests, incremental re-analysis."},
-	{"id": "parsing", "status": "implemented", "detail": "Python, JavaScript, TypeScript, TSX, Go and Java via tree-sitter. C, C++, C#, Rust and Kotlin are detected and inventoried but not parsed."},
-	{"id": "semantic-resolution", "status": "implemented", "detail": "Imports, exports, calls, instantiation and inheritance with confidence levels and provenance. Go and Java calls also follow declared types of variables, fields and call results. No general type inference or data-flow analysis."},
+	{"id": "parsing", "status": "implemented", "detail": "Python, JavaScript, TypeScript, TSX, Go, Java, Kotlin, C#, Rust, C and C++ via tree-sitter. Other formats are detected and inventoried but not parsed."},
+	{"id": "semantic-resolution", "status": "implemented", "detail": "Imports, exports, calls, instantiation and inheritance with confidence levels and provenance. For the statically typed languages, calls also follow declared types of variables, fields and call results. No general type inference, macro expansion or data-flow analysis."},
 	{"id": "knowledge-graph", "status": "implemented", "detail": "Versioned snapshots in PostgreSQL with search, bounded traversal and snapshot diff."},
 	{"id": "change-impact", "status": "experimental", "detail": "Dependents are available as reverse graph traversal. No risk scoring or test selection."},
 	{"id": "ai-reasoning", "status": "experimental", "detail": "Questions about an analyzed version are answered from knowledge-graph evidence; every claim is checked against the evidence it cites. Requires an AI provider to be configured."},

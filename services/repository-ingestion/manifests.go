@@ -40,12 +40,29 @@ type GoModule struct {
 	Path string `json:"path"`
 }
 
+// RustCrate is a Cargo package defined in the repository.
+type RustCrate struct {
+	Dir  string `json:"dir"`
+	Name string `json:"name"`
+}
+
+// DotnetUsing is a namespace a .NET project imports for all its files.
+type DotnetUsing struct {
+	Dir       string `json:"dir"`
+	Namespace string `json:"namespace"`
+}
+
 // ManifestFacts is everything extracted from manifests in one repository.
 type ManifestFacts struct {
 	Dependencies []Dependency
 	TsConfigs    []TsConfig
 	Packages     []WorkspacePackage
 	GoModules    []GoModule
+	RustCrates   []RustCrate
+	DotnetUsings []DotnetUsing
+	// IncludeDirs are C/C++ include directories named in CMake files and
+	// Makefiles, repository-relative.
+	IncludeDirs  []string
 	BuildSystems []string
 	// Problems lists manifests that could not be parsed. They are reported,
 	// not ignored.
@@ -132,7 +149,7 @@ func (c *ManifestCollector) Add(p string, content []byte) {
 		c.goMod(p, dir, content)
 	case base == "cargo.toml":
 		c.builds["cargo"] = true
-		c.cargo(p, content)
+		c.cargo(p, dir, content)
 	case base == "pom.xml":
 		c.builds["maven"] = true
 		c.pom(p, content)
@@ -141,8 +158,10 @@ func (c *ManifestCollector) Add(p string, content []byte) {
 		c.gradle(p, content)
 	case base == "cmakelists.txt":
 		c.builds["cmake"] = true
+		c.includeDirs(dir, content, cmakeInclude)
 	case base == "makefile":
 		c.builds["make"] = true
+		c.includeDirs(dir, content, makeInclude)
 	case base == "dockerfile":
 		c.builds["docker"] = true
 	case base == "meson.build":
@@ -151,6 +170,9 @@ func (c *ManifestCollector) Add(p string, content []byte) {
 		c.builds["bazel"] = true
 	case strings.HasSuffix(base, ".csproj") || strings.HasSuffix(base, ".sln"):
 		c.builds["dotnet"] = true
+		if strings.HasSuffix(base, ".csproj") {
+			c.csproj(p, dir, content)
+		}
 	}
 }
 
@@ -471,8 +493,81 @@ func (c *ManifestCollector) gradle(p string, content []byte) {
 	}
 }
 
-func (c *ManifestCollector) cargo(p string, content []byte) {
+var (
+	cmakeInclude = regexp.MustCompile(`(?i)(?:target_)?include_directories\s*\(([^)]*)\)`)
+	makeInclude  = regexp.MustCompile(`(?:^|\s)-I\s*([^\s'"]+)`)
+	csprojItem   = regexp.MustCompile(`<(PackageReference|Using)\s+([^>]*?)/?>`)
+	xmlAttr      = regexp.MustCompile(`(\w+)\s*=\s*"([^"]*)"`)
+)
+
+// includeDirs records C/C++ include directories. Build files are code and
+// are not evaluated: only literal paths (optionally prefixed with the
+// current or project source directory variable) inside the directory are
+// kept.
+func (c *ManifestCollector) includeDirs(dir string, content []byte, re *regexp.Regexp) {
+	seen := map[string]bool{}
+	for _, d := range c.facts.IncludeDirs {
+		seen[d] = true
+	}
+	for _, m := range re.FindAllStringSubmatch(string(content), -1) {
+		args := strings.Fields(m[1])
+		// target_include_directories(<target> ...): the first argument is
+		// the target.
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(m[0])), "target_") && len(args) > 0 {
+			args = args[1:]
+		}
+		for _, arg := range args {
+			arg = strings.Trim(arg, `"'`)
+			for _, prefix := range []string{"${CMAKE_CURRENT_SOURCE_DIR}/", "${PROJECT_SOURCE_DIR}/", "${CMAKE_SOURCE_DIR}/", "$(CURDIR)/", "./"} {
+				arg = strings.TrimPrefix(arg, prefix)
+			}
+			switch {
+			case arg == "" || strings.ContainsAny(arg, "$<>") || path.IsAbs(arg):
+				continue
+			case strings.EqualFold(arg, "PUBLIC") || strings.EqualFold(arg, "PRIVATE") || strings.EqualFold(arg, "INTERFACE") || strings.EqualFold(arg, "SYSTEM") || strings.EqualFold(arg, "BEFORE") || strings.EqualFold(arg, "AFTER"):
+				continue
+			}
+			full := path.Clean(path.Join(dir, arg))
+			if full == "." {
+				full = ""
+			}
+			if strings.HasPrefix(full, "..") || seen[full] {
+				continue
+			}
+			seen[full] = true
+			c.facts.IncludeDirs = append(c.facts.IncludeDirs, full)
+		}
+	}
+}
+
+// csproj reads `<PackageReference Include="..." Version="..."/>` and
+// `<Using Include="..."/>` items.
+func (c *ManifestCollector) csproj(p, dir string, content []byte) {
+	for _, m := range csprojItem.FindAllStringSubmatch(string(content), -1) {
+		attrs := map[string]string{}
+		for _, a := range xmlAttr.FindAllStringSubmatch(m[2], -1) {
+			attrs[a[1]] = a[2]
+		}
+		include := attrs["Include"]
+		if include == "" {
+			continue
+		}
+		switch m[1] {
+		case "PackageReference":
+			c.addDep(Dependency{ManifestPath: p, Ecosystem: "nuget", Name: include, Requirement: attrs["Version"], Scope: "runtime"})
+		case "Using":
+			if attrs["Static"] == "" && attrs["Alias"] == "" {
+				c.facts.DotnetUsings = append(c.facts.DotnetUsings, DotnetUsing{Dir: dir, Namespace: include})
+			}
+		}
+	}
+}
+
+func (c *ManifestCollector) cargo(p, dir string, content []byte) {
 	var doc struct {
+		Package struct {
+			Name string `toml:"name"`
+		} `toml:"package"`
 		Dependencies      map[string]any `toml:"dependencies"`
 		DevDependencies   map[string]any `toml:"dev-dependencies"`
 		BuildDependencies map[string]any `toml:"build-dependencies"`
@@ -496,6 +591,9 @@ func (c *ManifestCollector) cargo(p string, content []byte) {
 			}
 			c.addDep(Dependency{ManifestPath: p, Ecosystem: "cargo", Name: name, Requirement: req, Scope: scope})
 		}
+	}
+	if doc.Package.Name != "" {
+		c.facts.RustCrates = append(c.facts.RustCrates, RustCrate{Dir: dir, Name: doc.Package.Name})
 	}
 	add(doc.Dependencies, "runtime")
 	add(doc.Workspace.Dependencies, "runtime")

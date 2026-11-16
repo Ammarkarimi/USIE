@@ -34,7 +34,7 @@ and are not part of the running system.
 | Component | Location | Responsibility |
 |---|---|---|
 | Normalized IR | `engines/intermediate-representation` | Language-neutral per-file model (symbols, imports, exports, references, diagnostics) with language-specific `attrs`. |
-| Parsing engine | `engines/parser` | tree-sitter grammars + one extraction adapter per language family (Python, ECMAScript, Go, Java). Time-bounded parse, depth/count-bounded extraction. |
+| Parsing engine | `engines/parser` | tree-sitter grammars + one extraction adapter per language family (Python, ECMAScript, Go, Java, Kotlin, C#, Rust, C/C++). Time-bounded parse, depth/count-bounded extraction. |
 | Semantic engine | `engines/semantic` | Cross-file resolution with confidence and provenance ([spec](../specifications/semantic-resolution.md)). |
 | Engine process | `engines/cli` | `usie-engine info | parse | resolve`. Reads files only under `--root`, never follows symlinks, never executes input. |
 | Repository ingestion | `services/repository-ingestion` | Git/ZIP/local acquisition, scanning, classification, hashing, ignore rules, manifests ([spec](../specifications/ingestion.md)). |
@@ -103,8 +103,6 @@ These appear in the product specification and are **planned**; there is no
 code for them beyond what is listed:
 
 - Transformation and verification (sandboxed builds and tests).
-- Parsers for C#, Kotlin, Rust, C and C++ (files are detected and
-  inventoried only). Go and Java are parsed and resolved.
 - Change-impact scoring. The *dependents* view (reverse traversal) is
   **experimental**.
 - Neo4j projection, Kafka, Temporal, Redis, Kubernetes manifests,
