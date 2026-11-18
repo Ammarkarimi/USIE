@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 4573b22d1a6d2245e883c928b6e040d193d1fbe3200552a332dc35678c785fac # shrinks to parts = ["func (r *T[K]) M(a, b int) (c error) { "]
+cc e77a22639991a6f8b62a7f51c384e1684869273255dd50ec09bbf6b89aa90aea # Kotlin grammar error recovery explodes (millions of nodes): must time out cleanly

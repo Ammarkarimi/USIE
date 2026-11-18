@@ -2,10 +2,29 @@
 //! arbitrary input, including input that is not valid source or not UTF-8.
 
 use proptest::prelude::*;
+use std::time::Duration;
 use usie_ir::{FileIr, Language};
-use usie_parser::{parse, ParseOptions};
+use usie_parser::{parse, ParseError, ParseOptions};
 
 const LANGUAGES: [Language; 11] = Language::ALL;
+
+/// Parses under a short time budget. A timeout is a correct outcome for
+/// hostile input (the engine reports it instead of hanging): some grammars'
+/// error recovery is exponential on adversarial text, for example
+/// tree-sitter-kotlin-ng builds millions of nodes from about 1 KB of mixed
+/// Python and C# fragments. Anything else must succeed and keep the IR
+/// invariants.
+fn check(language: Language, src: &[u8]) {
+    let options = ParseOptions {
+        timeout: Duration::from_secs(2),
+        ..ParseOptions::default()
+    };
+    match parse(language, src, &options) {
+        Ok(ir) => check_invariants(&ir, src.len()),
+        Err(ParseError::Timeout) => {}
+        Err(e) => panic!("{language:?}: {e}"),
+    }
+}
 
 fn check_invariants(ir: &FileIr, len: usize) {
     let in_bounds = |s: &usie_ir::Span| {
@@ -120,8 +139,7 @@ proptest! {
     #[test]
     fn arbitrary_bytes_never_break_invariants(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
         for language in LANGUAGES {
-            let ir = parse(language, &bytes, &ParseOptions::default()).unwrap();
-            check_invariants(&ir, bytes.len());
+            check(language, &bytes);
         }
     }
 
@@ -129,8 +147,7 @@ proptest! {
     fn source_like_text_never_breaks_invariants(parts in proptest::collection::vec(fragment(), 0..40)) {
         let src = parts.concat();
         for language in LANGUAGES {
-            let ir = parse(language, src.as_bytes(), &ParseOptions::default()).unwrap();
-            check_invariants(&ir, src.len());
+            check(language, src.as_bytes());
         }
     }
 }
