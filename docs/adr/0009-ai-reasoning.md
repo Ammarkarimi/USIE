@@ -27,8 +27,8 @@ an AI assumption as verified fact. Repository content is untrusted.
   a JSON schema into JSON. Two implementations use the providers' official Go
   SDKs:
   - **OpenAI (default when `OPENAI_API_KEY` is set):** Chat Completions with
-    strict structured outputs (`json_schema`), `gpt-6-astra` (OpenAI's
-    recommended model for complex reasoning and coding), reasoning effort
+    strict structured outputs (`json_schema`), `gpt-6-luna` by default
+    (any model with structured outputs, set with `USIE_AI_MODEL`), reasoning effort
     `medium`, a stable prompt-cache key, and `store: false` so completions are
     not kept for later retrieval. A refusal in the message or a
     `content_filter` stop is recorded as a refusal; a `length` stop as an

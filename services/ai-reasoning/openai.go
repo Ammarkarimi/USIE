@@ -14,7 +14,7 @@ import (
 
 // DefaultOpenAIModel is OpenAI's recommended general model for complex
 // reasoning and coding; it supports structured outputs on Chat Completions.
-const DefaultOpenAIModel = "gpt-6-astra"
+const DefaultOpenAIModel = "gpt-6-luna"
 
 type OpenAIConfig struct {
 	APIKey string

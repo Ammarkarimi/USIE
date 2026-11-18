@@ -43,7 +43,7 @@ func completion(finish, content, refusal string) string {
 		b, _ := json.Marshal(refusal)
 		ref = string(b)
 	}
-	return `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"gpt-6-astra-2026-10-01",
+	return `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"gpt-6-luna-2026-10-01",
 		"choices":[{"index":0,"message":{"role":"assistant","content":` + string(c) + `,"refusal":` + ref + `},"finish_reason":"` + finish + `","logprobs":null}],
 		"usage":{"prompt_tokens":1000,"completion_tokens":40,"total_tokens":1040,"prompt_tokens_details":{"cached_tokens":800}}}`
 }
@@ -56,7 +56,7 @@ func TestOpenAIProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Name() != "openai" || p.Model() != "gpt-6-astra" {
+	if p.Name() != "openai" || p.Model() != "gpt-6-luna" {
 		t.Errorf("defaults: %s %s", p.Name(), p.Model())
 	}
 	prompt := Prompt{System: SystemPrompt(), History: []Turn{{"user", "earlier q"}, {"assistant", "earlier a"}}, User: "new q", Schema: AnswerSchema()}
@@ -68,12 +68,12 @@ func TestOpenAIProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(gen.JSON) != answer || gen.Model != "gpt-6-astra-2026-10-01" || gen.Usage != (Usage{InputTokens: 200, OutputTokens: 40, CacheReadTokens: 800}) {
+	if string(gen.JSON) != answer || gen.Model != "gpt-6-luna-2026-10-01" || gen.Usage != (Usage{InputTokens: 200, OutputTokens: 40, CacheReadTokens: 800}) {
 		t.Errorf("generation: %+v", gen)
 	}
 
 	b := fake.lastBody
-	if b["model"] != "gpt-6-astra" || b["max_completion_tokens"] != float64(32000) || b["reasoning_effort"] != "medium" {
+	if b["model"] != "gpt-6-luna" || b["max_completion_tokens"] != float64(32000) || b["reasoning_effort"] != "medium" {
 		t.Errorf("model/limits/effort: %v %v %v", b["model"], b["max_completion_tokens"], b["reasoning_effort"])
 	}
 	if b["store"] != false || b["prompt_cache_key"] != "usie-repository-answers" {
