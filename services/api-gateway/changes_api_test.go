@@ -196,6 +196,12 @@ func TestAIChangesAndVerification(t *testing.T) {
 	if fixed := result["fixed"].([]any); len(fixed) != 1 || !strings.Contains(fixed[0].(string), "test_add") {
 		t.Errorf("fixed: %v", result["fixed"])
 	}
+	// The change list reports the passed run, as the detail does.
+	for _, c := range alice.must(200, "GET", "/api/v1/changes", nil)["changes"].([]any) {
+		if c := c.(map[string]any); c["id"] == changeID && c["verified"] != true {
+			t.Errorf("listed change is not marked verified: %v", c["status"])
+		}
+	}
 	listed := alice.must(200, "GET", "/api/v1/changes/"+changeID, nil)["verifications"].([]any)
 	if len(listed) != 1 {
 		t.Errorf("runs listed: %v", listed)

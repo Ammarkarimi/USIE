@@ -123,18 +123,22 @@ type Change struct {
 	CreatedBy       *string         `json:"created_by"`
 	CreatedAt       time.Time       `json:"created_at"`
 	CompletedAt     *time.Time      `json:"completed_at"`
+	// Verified is set when a sandbox verification run of the change passed.
+	Verified bool `json:"verified"`
 }
 
 const changeColumns = `id, repository_id, version_id, request, focus_key, status, summary, rationale, risks, test_plan, limitations,
 	edits, diff, files_changed, lines_added, lines_removed, impact, context, provider, model, input_tokens, output_tokens,
-	cache_read_tokens, latency_ms, error, created_by::text, created_at, completed_at`
+	cache_read_tokens, latency_ms, error, created_by::text, created_at, completed_at,
+	EXISTS (SELECT 1 FROM verification_runs r WHERE r.organization_id = code_changes.organization_id
+	        AND r.change_id = code_changes.id AND r.status = 'passed')`
 
 func scanChange(row pgx.Row) (Change, error) {
 	var c Change
 	err := row.Scan(&c.ID, &c.RepositoryID, &c.VersionID, &c.Request, &c.FocusKey, &c.Status, &c.Summary, &c.Rationale,
 		&c.Risks, &c.TestPlan, &c.Limitations, &c.Edits, &c.Diff, &c.FilesChanged, &c.LinesAdded, &c.LinesRemoved, &c.Impact,
 		&c.Context, &c.Provider, &c.Model, &c.InputTokens, &c.OutputTokens, &c.CacheReadTokens, &c.LatencyMS, &c.Error,
-		&c.CreatedBy, &c.CreatedAt, &c.CompletedAt)
+		&c.CreatedBy, &c.CreatedAt, &c.CompletedAt, &c.Verified)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}

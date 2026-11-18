@@ -30,7 +30,7 @@ function mock(runs: object[]) {
       if (url.includes("/ai/status")) return { enabled: true, provider: "scripted", model: "scripted-model", daily_token_budget: 1, tokens_used_today: 0, data_notice: "Requests are sent to scripted." };
       if (url.includes("/verification-profiles")) return { sandbox: { sandbox: "bubblewrap", network: false, programs: ["python3"] }, profiles: [{ id: "unittest", label: "Python (unittest)", description: "unittest discover", requires: ["python3"], steps: [], detected: true, available: true }] };
       if (url.includes("/changes/c1")) return { change, verifications: runs };
-      if (url.includes("/changes")) return { changes: [change] };
+      if (url.includes("/changes")) return { changes: [{ ...change, verified: runs.some((r) => (r as { status?: string }).status === "passed") }] };
       if (url.includes("/versions")) return { versions: [version] };
       if (url.includes("/repositories/r1")) return repo;
       return {};
@@ -59,6 +59,7 @@ describe("changes page", () => {
     mock([]);
     renderAt("/repositories/r1/changes?version=v1&change=c1");
     expect(await screen.findByText("AI-proposed, unverified")).toBeTruthy();
+    expect(await screen.findByText("unverified")).toBeTruthy();
     const diff = screen.getByLabelText("Diff");
     expect(diff.textContent).toContain("+    return a + b <script>alert(1)</script>");
     expect(diff.querySelector("script")).toBeNull();
@@ -72,6 +73,8 @@ describe("changes page", () => {
     mock([run]);
     renderAt("/repositories/r1/changes?version=v1&change=c1");
     expect(await screen.findByText("verified: a sandbox run passed")).toBeTruthy();
+    // The list agrees with the detail.
+    expect(await screen.findByText("verified")).toBeTruthy();
     expect(screen.getByText("Without the change")).toBeTruthy();
     expect(screen.getByText("0 passed, 1 failed")).toBeTruthy();
     expect(screen.getByText("1 passed, 0 failed")).toBeTruthy();

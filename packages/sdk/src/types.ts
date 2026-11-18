@@ -514,6 +514,8 @@ export interface CodeChange {
   created_by: string | null;
   created_at: string;
   completed_at: string | null;
+  /** A sandbox verification run of this change passed. */
+  verified: boolean;
 }
 
 export interface VerificationProfile {

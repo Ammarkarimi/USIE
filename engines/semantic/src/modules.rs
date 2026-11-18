@@ -78,6 +78,13 @@ impl<'a> ModuleIndex<'a> {
         };
         for (i, f) in files.iter().enumerate() {
             if f.family == LanguageFamily::Python {
+                // A type stub next to its implementation describes the same
+                // module; the interpreter imports the `.py` file.
+                if let Some(stem) = f.path.strip_suffix(".pyi") {
+                    if index.by_path.contains_key(format!("{stem}.py").as_str()) {
+                        continue;
+                    }
+                }
                 index.register_python(i, f.path);
             }
         }

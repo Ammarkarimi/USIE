@@ -68,7 +68,7 @@ export function ChangesPage() {
                 >
                   <div className="line-clamp-2">{c.request}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-                    <StatusBadge status={c.status === "proposed" ? "unverified" : c.status} />
+                    <StatusBadge status={c.status === "proposed" ? (c.verified ? "verified" : "unverified") : c.status} />
                     <span>{formatRelative(c.created_at)}</span>
                   </div>
                 </button>

@@ -136,7 +136,7 @@ make test   # everything below
 make lint   # rustfmt, clippy -D warnings, gofmt, go vet, golangci-lint
 ```
 
-- **Rust** (71 tests): extraction behaviour per language, property tests over
+- **Rust** (72 tests): extraction behaviour per language, property tests over
   arbitrary bytes and source-like text, resolver scenarios (packages, path
   aliases, workspaces, CommonJS, shadowing, inheritance, ambiguity, cycles,
   determinism; Go modules, vendoring, build variants, embedding, interfaces;

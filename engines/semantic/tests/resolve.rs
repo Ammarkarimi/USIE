@@ -10,7 +10,7 @@ use usie_semantic::{
 fn language(path: &str) -> Option<Language> {
     let ext = path.rsplit('.').next()?;
     Some(match ext {
-        "py" => Language::Python,
+        "py" | "pyi" => Language::Python,
         "js" | "jsx" | "mjs" | "cjs" => Language::Javascript,
         "ts" => Language::Typescript,
         "tsx" => Language::Tsx,
@@ -632,6 +632,34 @@ fn python_package_init_and_class_body() {
         "scope.class-member",
     );
     edge(&r, "sym:model.py#M", "CALLS", "sym:model.py#validator");
+}
+
+#[test]
+fn python_stub_files_do_not_make_modules_ambiguous() {
+    // Libraries ship `.pyi` stubs next to their modules; Python imports the
+    // `.py` file, so the stub must not compete with it.
+    let r = project(
+        ProjectConfig::default(),
+        &[
+            ("pkg/__init__.py", "from .recipes import *\n"),
+            ("pkg/__init__.pyi", "from .recipes import *\n"),
+            ("pkg/recipes.py", "def take(n, it): pass\n"),
+            ("pkg/recipes.pyi", "def take(n: int, it): ...\n"),
+            ("tests/__init__.py", ""),
+            (
+                "tests/test_recipes.py",
+                "from unittest import TestCase\nimport pkg as mi\n\nclass TakeTests(TestCase):\n    def test_take(self):\n        mi.take(1, [])\n",
+            ),
+        ],
+    );
+    let take = edge(
+        &r,
+        "sym:tests/test_recipes.py#TakeTests.test_take",
+        "CALLS",
+        "sym:pkg/recipes.py#take",
+    );
+    // Through the import (a star re-export: probable), not a name-only guess.
+    assert_ne!(take.confidence, Inferred);
 }
 
 #[test]
